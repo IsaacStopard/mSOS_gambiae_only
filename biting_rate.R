@@ -5,10 +5,7 @@ df <- readxl::read_excel("data/doi_10.5061_dryad.74839_shapiro/PLoS.Biology.Data
 
 df_long <- df %>% tidyr::pivot_longer(cols = c("clutch.1", "clutch.2"), names_to = "clutch", values_to =  "gono_length")
 
-ggplot(data = df_long,
-       aes(x = temp, y = gono_length, col = id, group = factor(id))) +
-  geom_point()
-
+# checking if there is correlation between the clutches of the same mosquito
 ggplot(data = df %>% tidyr::pivot_longer(cols = c("clutch.1", "clutch.2"), names_to = "clutch", values_to =  "gono_length"),
        aes(x = clutch, y = gono_length, col = id, group = factor(id))) +
   geom_point() +
@@ -106,7 +103,8 @@ fit <- sampling(stanDso_in,
                 control = list(max_treedepth = 14,
                                stepsize = 0.1)) 
 
-saveRDS(fit, file = "fits/biting_rate_fit.rds")
+#saveRDS(fit, file = "fits/biting_rate_fit.rds")
+fit <- readRDS(file = "fits/biting_rate_fit.rds")
 
 pred_vals <- rstan::extract(fit, "Briere_out")$Briere_out
 
@@ -117,16 +115,37 @@ mean_biting_rate <- data.frame(temp = pred_temp,
 
 write.csv(mean_biting_rate, file = "biting_rate_estimates.csv")
 
-ggplot(data = mean_biting_rate) +
-  geom_ribbon(aes(x = temp, ymin = lower, ymax = upper), alpha = 0.25) +
-  geom_line(aes(x = temp, y = med)) +
+png(file = "results_temp/biting_rate_plot.png", height = 550, width = 900)
+ggplot(data = mean_biting_rate) + 
+  geom_vline(xintercept = 17, col = "darkred", linetype = 2, linewidth = 1.5, alpha = 0.7) +
+  geom_vline(xintercept = 30, col = "darkred", linetype = 2, linewidth = 1.5, alpha = 0.7) +
+  geom_ribbon(aes(x = temp, ymin = lower, ymax = upper), alpha = 0.2) +
+  geom_line(aes(x = temp, y = med), linewidth = 1) +
   theme_bw() +
-  geom_point(data = na.omit(df_long) %>% group_by(temp) %>% summarise(mean = mean(1/gono_length),
-                                                                           lower = quantile(1/gono_length, prob = 0.025),
-                                                                           upper = quantile(1/gono_length, prob = 0.975)), 
-             aes(x = temp, y = mean), col = "skyblue", size = 3) +
-  ylab("Biting rate")
+  geom_point(data = df_s %>% group_by(temp, gono_length) %>% summarise(n = n()), 
+             aes(x = temp, y = 1/gono_length, size = n), col = "skyblue") +
+  ylab("Biting rate per day") +
+  theme_bw() + 
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        text = element_text(size = 18)) +
+  xlab("Temperature (°C)") +
+  scale_x_continuous(breaks = seq(0, 50, 5)) +
+  scale_y_continuous(breaks = seq(0, 0.5, 0.1)) +
+  coord_cartesian(xlim = c(0, 50)) +
+  scale_size_continuous(name = "Sample\nsize", range = c(2, 7)) 
+dev.off()
   
 ggplot(data = na.omit(df_long),
        aes(x = temp, y = 1/gono_length, group = factor(temp))) +
   geom_boxplot()
+
+EIP_surv_fun <- function(t){
+  return(dgamma(t, 40, 4) * (1 - pexp(t * 0.1)))
+}
+
+# probability of surviving the EIP
+integrate(EIP_surv_fun, lower = 0, upper = 10)
+
+pgamma(seq(0, 10, 0.1), 40, 4) * (1 - pexp(seq(0, 10, 0.1) * 0.1))
+

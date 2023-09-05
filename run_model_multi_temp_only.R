@@ -79,6 +79,7 @@ data_in_temp <- list(
   rate_O_prior = rate_O_prior[1]  #rate_O_prior[all_data$unique_gt[,"index_temp"]]
 )
 
+# starting values for MCMC
 finit_temp <- function(){
   list(shape_O = 10, #rep(10, nrow(all_data$unique_gt)), 
        rate_O = 4, # rep(4, nrow(all_data$unique_gt)),

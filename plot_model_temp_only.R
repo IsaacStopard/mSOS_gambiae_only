@@ -1,5 +1,7 @@
 rm(list = ls())
-library(tidyverse); library(rstan); library(shinystan); library(cowplot); library(zipfR); library(truncnorm);library(ggpmisc); library(patchwork)
+library(tidyverse); library(rstan); library(shinystan); library(cowplot); 
+library(zipfR); library(truncnorm);library(ggpmisc); library(patchwork); library(DescTools);
+library(calculus)
 options(mc.cores = parallel::detectCores())
 rstan_options(auto_write = TRUE)
 
@@ -57,7 +59,7 @@ iterations <- 5500
 warmup <- 3000
 chains <- 4
 
-s_data_in_temp <- generate_prevalence_temp(subset(all_data$sporozoite_data, index_g!=1)) %>% 
+s_data_in_temp <- generate_prevalence(subset(all_data$sporozoite_data, index_g!=1)) %>% 
   mutate(temp_label = paste0(temp, "°C"))
 
 o_data_in_temp <- oocyst_intensity_indexing_temp(subset(all_data$oocyst_data, index_g!=1))
@@ -73,10 +75,11 @@ pars <- c("shape_O", "rate_O", "a_shape_S", "b_shape_S", "c_shape_S",
           "a_mu", "b_mu", "c_mu",
           "k")
 
-###################
-### visualising ###
-###################
+##############################
+### visualising model fits ###
+##############################
 
+### posterior predictions
 # sporozoites
 S_ppd_df <- rbind(run_prop_ppd_df(fit_temp, "pooled", "S_prevalence_ppd", length_ppd_times, PPD_times),
                   run_prop_ppd_df(fit_all_temp, "independent", "S_prevalence_ppd", length_ppd_times, PPD_times)) %>% 
@@ -85,7 +88,7 @@ S_ppd_df <- rbind(run_prop_ppd_df(fit_temp, "pooled", "S_prevalence_ppd", length
 S_plot <- ggplot(data = S_ppd_df) + 
   geom_ribbon(aes(x = DPI, ymin = lower, ymax = upper, col = model, fill = model), alpha = 0.25) +
   geom_pointrange(data = s_data_in_temp, aes(x = DPI, y = prevalence, ymin = lower, ymax = upper), col = "grey20") +
-  geom_line(aes(x = DPI, y = median, col = model), size = 0.75) +
+  geom_line(aes(x = DPI, y = median, col = model), linewidth = 0.75) +
   facet_wrap(~temp_label) + xlab("Days post infection") + ylab("Sporozoite prevalence") +
   scale_colour_manual(values = c("#56B4E9", "#E69F00"), name = "") +
   scale_fill_manual(values = c("#56B4E9", "#E69F00"), name = "") +
@@ -99,6 +102,7 @@ oocyst_number <- generate_oocyst_intensity_summary(subset(all_data$oocyst_data, 
 oocyst_number[,"temp"] <- all_data$unique_temp[oocyst_number$index_temp]
 oocyst_number[,"temp_label"] <- paste0(oocyst_number[,"temp"],"°C")
 
+# infected mosquitoes
 oocyst_number_inf <- generate_oocyst_intensity_summary(subset(all_data$oocyst_data, index_g!=1 & Oocyst_number>0))
 oocyst_number_inf[,"temp"] <- all_data$unique_temp[oocyst_number_inf$index_temp]
 oocyst_number_inf[,"temp_label"] <- paste0(oocyst_number_inf[,"temp"],"°C")
@@ -113,39 +117,46 @@ O_I_inf_ppd <- rbind(run_prop_ppd_df(fit_temp, "pooled", "O_intsy_inf_ppd", leng
 
 O_I_plot <- ggplot(data = O_I_ppd) + geom_ribbon(aes(x = DPI, ymin = lower, ymax = upper, col = model, fill = model), alpha = 0.25) +
   geom_pointrange(data = oocyst_number, aes(x = DPI, y = mean, ymin = lower_CI, ymax = upper_CI), col = "grey20") +
-  geom_line(aes(x = DPI, y = median, col = model), size = 0.75) +
-  facet_wrap(~temp_label, scales = "free") + xlab("Days post infection") + 
+  geom_line(aes(x = DPI, y = median, col = model), linewidth = 0.75) +
+  facet_wrap(~temp_label) + xlab("Days post infection") + 
   ylab("Mean oocyst intensity\n(among all mosquitoes)") +
   scale_colour_manual(values = c("#56B4E9", "#E69F00"), name = "") +
   scale_fill_manual(values = c("#56B4E9", "#E69F00"), name = "")
 
 O_I_inf_plot <- ggplot(data = O_I_inf_ppd) + geom_ribbon(aes(x = DPI, ymin = lower, ymax = upper, col = model, fill = model), alpha = 0.25) +
   geom_pointrange(data = oocyst_number_inf, aes(x = DPI, y = mean, ymin = lower_CI, ymax = upper_CI), col = "grey20") +
-  geom_line(aes(x = DPI, y = median, col = model), size = 0.75) +
-  facet_wrap(~temp_label, scales = "free") + xlab("Days post infection") + 
+  geom_line(aes(x = DPI, y = median, col = model), linewidth = 0.75) +
+  facet_wrap(~temp_label) + xlab("Days post infection") + 
   ylab("Mean oocyst intensity\n(among infected mosquitoes)") +
   scale_colour_manual(values = c("#56B4E9", "#E69F00"), name = "") +
   scale_fill_manual(values = c("#56B4E9", "#E69F00"), name = "")
 
 legend <- get_legend(S_plot)
 
-png("results_temp/fits_plot.png", height = 800, width = 850)
-plot_grid(
-  plot_grid(
-    S_plot + theme(legend.position = "none"),
-    O_I_inf_plot + theme(legend.position = "none"),
-    labels = c("A", "B", ""),
-    nrow = 2),
-  legend, nrow = 1, 
-  labels = c("",""),
-  rel_widths = c(0.875, 0.175)
-          )
+png("results_temp/fits_plot.png", height = 900, width = 950)
+
+(((S_plot + theme(legend.position = "none")) / (O_I_inf_plot + theme(legend.position = "none"))) | legend) +
+  plot_layout(widths = c(0.875, 0.175)) +
+  plot_annotation(tag_levels = list(c("a", "b"), "")) &
+  theme(plot.tag = element_text(face = 'bold'))
+
+# plot_grid(
+#   plot_grid(
+#     S_plot + theme(legend.position = "none"),
+#     O_I_inf_plot + theme(legend.position = "none"),
+#     labels = c("A", "B", ""),
+#     nrow = 2),
+#   legend, nrow = 1, 
+#   labels = c("",""),
+#   rel_widths = c(0.875, 0.175)
+#          )
 dev.off()
 
 png("results_temp/fits_plot_O.png", height = 850, width = 975)
 (((O_I_plot + theme(legend.position = "none")) / (O_I_inf_plot + theme(legend.position = "none"))) | legend) +
   plot_layout(widths = c(0.875, 0.175)) +
-  plot_annotation(tag_levels = list(c("A", "B"), ""))
+  plot_annotation(tag_levels = list(c("a", "b"), "")) &
+  theme(plot.tag = element_text(face = 'bold'))
 dev.off()
 
 png("results_temp/fits_plot_S.png", height = 525, width = 1000)
@@ -155,6 +166,30 @@ dev.off()
 ##############################
 ### actual vs fitted plots ###
 ##############################
+
+# Brier score calculation
+
+s_data_brier <- subset(s_data, gametocytemia != 0.00024)
+
+s_data_brier$pooled_median <- subset(S_ppd_df, model == "pooled")[match(interaction(round(s_data_brier$DPI, digits = 2), s_data_brier$temp), 
+      interaction(round(subset(S_ppd_df, model == "pooled")$DPI, digits = 2), subset(S_ppd_df, model == "pooled")$temp)), "median"]
+
+s_data_brier$ind_median <- subset(S_ppd_df, model == "independent")[match(interaction(round(s_data_brier$DPI, digits = 2), s_data_brier$temp), 
+                                                                        interaction(round(subset(S_ppd_df, model == "independent")$DPI, digits = 2), 
+                                                                                    subset(S_ppd_df, model == "independent")$temp)), "median"]
+
+s_data_brier <- s_data_brier %>% rowwise() %>% mutate(res_pooled = (presence - pooled_median)^2,
+                        res_ind = (presence - ind_median)^2) %>% ungroup() %>% group_by(temp) %>% 
+  mutate(mean = mean(presence),
+         ) %>% ungroup() %>% rowwise() %>% mutate(res_mean = (presence - mean)^2)
+
+
+s_data_brier_text <- s_data_brier %>% group_by(temp) %>% summarise(brier_pooled = sum(res_pooled)/n(),
+                                                                   brier_ind = sum(res_ind)/n(),
+                                                                   brier_mean = sum(res_mean)/n(),
+                                                                   scaled_brier_pooled = 1 - brier_pooled / brier_mean,
+                                                                   scaled_brier_ind = 1 - brier_ind / brier_mean) %>% 
+  mutate(temp_label = paste0(temp, "°C"))
 
 # sporozoites
 gen_a_f_S <- function(s_data_in_temp, temp_S_ppd, model){
@@ -173,19 +208,29 @@ gen_a_f_S <- function(s_data_in_temp, temp_S_ppd, model){
 a_f_df <- rbind(gen_a_f_S(s_data_in_temp, subset(S_ppd_df, model == "pooled"), "pooled"),
                 gen_a_f_S(s_data_in_temp, subset(S_ppd_df, model == "independent"), "independent"))
 
-actual_fitted_S <- ggplot(data = a_f_df %>% mutate(temp_label = paste0(temp, "°C")), aes(x = actual, y = median, group = interaction(temp, model)),
-       col = model) + 
+s_data_brier_text <- left_join(s_data_brier_text, a_f_df %>% group_by(temp) %>% summarise(x = max(a_upper) * 0.8,
+                                                                                          y = min(upper) + 0.025 * max(upper),
+                                                                                          y_ = min(upper) + 0.175 * max(upper)), 
+                               by = c("temp"))
+
+actual_fitted_S <- ggplot(data = a_f_df %>% mutate(temp_label = paste0(temp, "°C"))) + 
   geom_pointrange(aes(x = actual, y = median, ymin = lower, ymax = upper, col = model), size = 0.875) + 
-  geom_errorbarh(aes(xmax = a_upper, xmin = a_lower, height = 0, col = model)) + 
-  geom_smooth(formula = y ~ x, aes(x = actual, y = median, col = model), method = "lm", se = FALSE,
-              size = 1.5) +
-  geom_abline(aes(slope=1, intercept=0), linetype = 2, size = 1.5, alpha = 0.75) +
-  facet_wrap(~temp_label + model, scales = "free") +  
-  stat_poly_eq(formula = y ~ x, aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~"), col = model), parse = TRUE,
-               label.x = 0.95, label.y = 0.05) +
+  geom_errorbarh(aes(xmax = a_upper, xmin = a_lower, y = median, height = 0, col = model)) + 
+  # geom_smooth(formula = y ~ x, aes(x = actual, y = median, col = model), method = "lm", se = FALSE,
+  #             size = 1.5) +
+  geom_abline(aes(slope=1, intercept=0), linetype = 2, linewidth = 1.5, alpha = 0.75) +
+  facet_wrap(~temp_label, scales = "free") +  
+  # stat_poly_eq(formula = y ~ x, aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~"), col = model), parse = TRUE,
+  #              label.x = 0.95, label.y = 0.05) +
   ylab("Fitted sporozoite prevalence") + xlab("Actual sporozoite prevalence") +
   scale_y_continuous(labels = scales::percent) + scale_x_continuous(labels = scales::percent) +
-  scale_colour_manual(values = c("#56B4E9", "#E69F00"), name = "")
+  scale_colour_manual(values = c("#56B4E9", "#E69F00"), name = "") +
+  geom_label(data = s_data_brier_text,
+            aes(x = x, y = y, label = paste0("BSS = ", round(scaled_brier_pooled, digits = 2))),
+            fill = factor("#E69F00"), size = 5, col = "black", alpha = 0.5) +
+  geom_label(data = s_data_brier_text,
+             aes(x = x, y = y_, label = paste0("BSS = ", round(scaled_brier_ind, digits = 2))),
+             fill = factor("#56B4E9"), size = 5, col = "black", alpha = 0.5)
 
 # oocysts - mean intensity all
 gen_a_f_O <- function(oocyst_number, temp_O_I_ppd, model, inf_){
@@ -204,23 +249,35 @@ gen_a_f_O <- function(oocyst_number, temp_O_I_ppd, model, inf_){
   return(a_f_df_pl)
 }
 
-a_f_df_pl_plot <- rbind(gen_a_f_O(oocyst_number, subset(O_I_ppd, model == "pooled"), "pooled", "A (all)"),
-                        gen_a_f_O(oocyst_number, subset(O_I_ppd, model == "independent"), "independent", "A (all)"),
-                        gen_a_f_O(oocyst_number_inf, subset(O_I_inf_ppd, model == "pooled"), "pooled", "B (infected only)"),
-                        gen_a_f_O(oocyst_number_inf, subset(O_I_inf_ppd, model == "independent"), "independent", "B (infected only)"))
+a_f_df_pl_plot <- rbind(gen_a_f_O(oocyst_number, subset(O_I_ppd, model == "pooled"), "pooled", "all mosquitoes"),
+                        gen_a_f_O(oocyst_number, subset(O_I_ppd, model == "independent"), "independent", "all mosquitoes"),
+                        gen_a_f_O(oocyst_number_inf, subset(O_I_inf_ppd, model == "pooled"), "pooled", "infected mosquitoes only"),
+                        gen_a_f_O(oocyst_number_inf, subset(O_I_inf_ppd, model == "independent"), "independent", "infected mosquitoes only"))
+
+a_f_df_pl_plot <- a_f_df_pl_plot %>% group_by(model, mosq_pop) %>% 
+  mutate(a_mean = mean(actual)) %>% ungroup() %>% rowwise() %>%
+  mutate(res = (actual - median)^2,
+         res_mean = (actual - a_mean)^2)
+
+r2_o <- a_f_df_pl_plot %>% group_by(model, mosq_pop) %>% summarise(r2 = 1 - (sum(res)/sum(res_mean)),
+                                                                   r_lab = paste0("R^'2' == ", round(r2, digits = 2)))
 
 actual_fitted_O <- ggplot(data = a_f_df_pl_plot %>% mutate(temp = paste0(temp,"°C")), aes(x = actual, y = median)) + 
   geom_pointrange(aes(x = actual, y = median, ymin = lower, ymax = upper, col = temp), size = 0.875) +
   geom_errorbarh(aes(xmax = a_upper, xmin = a_lower, height = 0,
                      col = temp)) + 
-  geom_smooth(aes(x = actual, y = median), method = "lm", se = FALSE,
-              col = "black", size = 1.5) +
-  stat_poly_eq(formula = y ~ x, aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")), parse = TRUE,
-               label.x = 0.95, label.y = 0.05) +
+  # geom_smooth(aes(x = actual, y = median), method = "lm", se = FALSE,
+  #             col = "black", size = 1.5) +
+  # stat_poly_eq(formula = y ~ x, aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")), parse = TRUE,
+  #              label.x = 0.95, label.y = 0.05) +
   facet_grid(vars(model), vars(mosq_pop), scales = "free") + 
-  geom_abline(aes(slope=1, intercept=0), linetype = 2, size = 1.5, alpha = 0.75) +
+  geom_abline(aes(slope=1, intercept=0), linetype = 2, linewidth = 1.5, alpha = 0.75) +
   xlab("Actual mean oocyst intensity") + ylab("Fitted mean oocyst intensity") +
-  theme(legend.title=element_blank())
+  theme(legend.title=element_blank()) +
+  geom_label(data = r2_o,
+             aes(x = 50, y = 4, 
+                 label = r_lab),
+            size = 5, col = "black", alpha = 0.5, parse = TRUE)
 
 # png("results_temp/actual_fitted_O_S.png", height = 1000, width = 1000)
 # plot_grid(
@@ -237,6 +294,14 @@ dev.off()
 
 png("results_temp/actual_fitted_S.png", height = 950, width = 1250)
 actual_fitted_S
+dev.off()
+
+png("results_temp/actual_fitted_O_S.png", height = 1100, width = 1100)
+(actual_fitted_O + plot_spacer() + 
+    plot_layout(widths = c(10, 1))) / actual_fitted_S + 
+  plot_layout(heights = c(1, 1.5)) +
+  plot_annotation(tag_levels = c("a", "b")) &
+  theme(plot.tag = element_text(face = 'bold'))
 dev.off()
 
 ##################
@@ -282,16 +347,59 @@ plot_df <- rbind(cbind(gen_quantiles(EIP_index$EIP_10, temps), data.frame("EIP" 
 
 write.csv(plot_df, file = "results_temp/temp_model_EIP_values.csv")
 
-# EIP_u <- calc_EIP_v(EIP_index = EIP_index, temps = temps, n_iter = 10000)
-# saveRDS(EIP_u, file = "results_temp/EIP_u.rds")
+# calculating the probability the degree day model EIP is > than EIP50
+p_EIP_50_df <- data.frame(temp = temps,
+                          p_EIP50 = sapply(seq(1, length(temps)), function(i, EIP_index, temps){
+                            sum(EIP_index$EIP_50[,i] > 111/(temps[i] - 16))/length(EIP_index$EIP_50[,i])
+                          }, temps = temps, EIP_index = EIP_index))
+
+f <- approxfun(x = subset(p_EIP_50_df, p_EIP50 > 0 & p_EIP50 < 0.99)$p_EIP50, 
+               y = subset(p_EIP_50_df, p_EIP50 > 0 & p_EIP50 < 0.99)$temp, method = "linear")
+
+p_EIP_50_plot <- ggplot(data = p_EIP_50_df, aes(x = temp, y = p_EIP50)) + 
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.2)) +
+  scale_x_continuous(breaks = seq(18, 30, 2)) +
+  ylab(expression(paste(italic(p(EIP[50]>EIP[D]))))) + xlab("Temperature (°C)") +
+  #geom_hline(yintercept = 0.5, linetype = 2, size = 1) +
+  theme(text = element_text(size = 18)) +
+  geom_line(linewidth = 1.5) +
+  theme(plot.background = element_rect(colour = "grey55", fill = NA, linewidth = 1),
+        plot.margin = margin(0.05, 0.25, 0.05, 0.05, "cm"))
+
+EIP_p50_plot <- ggplot() + 
+  geom_ribbon(data = subset(plot_df, EIP!="mean"), aes(x = temp, ymin = lower, ymax = upper, fill = factor(EIP)), alpha = 0.45) +
+  geom_line(data = subset(plot_df, EIP!="mean"), aes(x = temp, y = median, col = factor(EIP)), linewidth = 1) +
+  geom_line(data = degree_day, 
+            aes(x = temp, y = EIP_), linetype = 2.5, linewidth = 1.25) +
+  geom_pointrange(data = EIP_quantile, aes(x = temp, ymin = lower, y = median, ymax = upper, col = factor(EIP)), size = 0.75) + 
+  #geom_line(data = degree_day, aes(x = temp, y = EIP_), linetype = 2, size = 1.25, alpha = 0.75) +
+  scale_x_continuous(limits = c(17, 30), breaks = seq(17, 30, 1)) +
+  scale_y_continuous(limits = c(0, 115), breaks = seq(0, 110, 10)) +
+  ylab("EIP (days)") + xlab("Temperature (°C)") + 
+  theme(text = element_text(size = 20)) +
+  scale_colour_manual(values = c("#56B4E9", "#E69F00", "#CC79A7"), labels = c(parse(text="EIP[10]"), parse(text="EIP[50]"), parse(text="EIP[90]"))) +
+  scale_fill_manual(values = c("#56B4E9", "#E69F00", "#CC79A7"), labels = c(parse(text="EIP[10]"), parse(text="EIP[50]"), parse(text="EIP[90]"))) +
+  guides(fill=guide_legend(title=""), colour=guide_legend(title="")) + 
+  inset_element(p_EIP_50_plot, left = 0.55, right = 0.99, bottom = 0.5,  top = 0.99) +
+  plot_annotation(tag_levels = 'a') &
+  theme(plot.tag = element_text(face = 'bold'))
+
+png(file = "results_temp/EIP_pEIP50_plot.png", height = 550, width = 900)
+EIP_p50_plot
+dev.off()
+
+EIP_u <- calc_EIP_v(EIP_index = EIP_index, temps = temps, n_iter = 10000)
+saveRDS(EIP_u, file = "results_temp/EIP_u.rds")
 EIP_u <- readRDS(file = "results_temp/EIP_u.rds")
 
-# variance in the EIP
-# var_df <- bind_rows(lapply(seq(1, length(temps)),
-#        calc_var_mean_i_EIP,
-#        EIP_index = EIP_index)) %>% mutate(temp = temps[index])
-# 
-# saveRDS(var_df, file = "results_temp/var_df.rds")
+###############################
+##### variance in the EIP #####
+###############################
+var_df <- bind_rows(lapply(seq(1, length(temps)),
+                           calc_var_mean_i_EIP,
+                           EIP_index = EIP_index)) %>% mutate(temp = temps[index])
+ 
+saveRDS(var_df, file = "results_temp/var_df.rds")
 var_df <- readRDS(file = "results_temp/var_df.rds")
 
 var_df <- var_df %>% mutate(cv = sqrt(var)/m) %>% na.omit()
@@ -312,7 +420,7 @@ range_10_90 <- data.frame("median" = apply(range_10_90_all, 2, median),
 EIP_10_EIP_90_plot <- ggplot(data = range_10_90, 
          aes(x = temp, y = median, ymin = lower, ymax = upper)) +
     geom_ribbon(alpha = 0.25) +
-    geom_line(size = 1.5) +
+    geom_line(linewidth = 1.5) +
     ylab(expression(paste("Range between ", EIP[10]," and ", EIP[90], " (days)"))) + 
     xlab("Temperature (°C)") +
     scale_x_continuous(limits = c(17, 30), breaks = seq(18, 30, 2)) +
@@ -320,15 +428,15 @@ EIP_10_EIP_90_plot <- ggplot(data = range_10_90,
 
 var_plot <- ggplot(data = var_df, aes(x = temp, y = var_m, ymin = var_lower, ymax = var_upper)) +
   geom_ribbon(alpha = 0.25) +
-  geom_line(size = 1.5) +
-  ylab("Variance (days)") + xlab("Temperature (°C)")  +
+  geom_line(linewidth = 1.5) +
+  ylab("Variance of the\nEIP distribution (days)") + xlab("Temperature (°C)")  +
     scale_x_continuous(limits = c(17, 30), breaks = seq(18, 30, 2)) +
     scale_y_continuous(breaks = seq(0, 120, 20), limits = c(0, 120))
 
 CV_plot <- ggplot(data = var_df, aes(x = temp, y = cv_m, ymin = cv_lower, ymax = cv_upper)) +
   geom_ribbon(alpha = 0.25) +
-  geom_line(size = 1.5) +
-  ylab("Coefficient of variation") + xlab("Temperature (°C)")  +
+  geom_line(linewidth = 1.5) +
+  ylab("Coefficient of variation\nof the EIP distribution") + xlab("Temperature (°C)")  +
     scale_x_continuous(limits = c(17, 30), breaks = seq(18, 30, 2)) +
     scale_y_continuous(breaks = seq(0, 0.25, 0.05), limits = c(0, 0.25))
 
@@ -339,8 +447,10 @@ wrap_plots(
   var_plot,
   
   CV_plot
-) + plot_annotation(tag_levels = 'A')
+) + plot_annotation(tag_levels = 'a') &
+  theme(plot.tag = element_text(face = 'bold'))
 dev.off()
+
 #########################
 ### vector competence ###
 #########################
@@ -540,7 +650,7 @@ mu_plot <- ggplot(data = smooth_mu) +
   geom_pointrange(data = oocyst_number_inf, aes(x = temp, y = mean, ymin = lower_CI, ymax = upper_CI), alpha = 0.75, shape = 21,
                   fill = "black", col = "black", size = 0.875) +
   geom_ribbon(aes(x = temp_, ymin = lower, ymax = upper, fill = model), alpha = 0.2) +
-  geom_line(aes(x = temp_, y = median, col = model), size = 1.5) +
+  geom_line(aes(x = temp_, y = median, col = model), linewidth = 1.5) +
   geom_pointrange(data = subset(out, label == "Parameter: mu" & model == "independent"),  
                   aes(x = temp_, y = median, ymin = lower, ymax = upper, col = model, fill = model),
                   alpha = 0.75, shape = 21, size = 0.875) +
@@ -548,11 +658,12 @@ mu_plot <- ggplot(data = smooth_mu) +
   scale_colour_manual(values = c("#56B4E9", "#E69F00"), name = "Model") + 
   scale_fill_manual(values = c("#56B4E9", "#E69F00"), name = "Model") +
   facet_wrap(~label, scales = "free", labeller =  label_parsed) + 
+  scale_y_continuous(breaks = seq(0, 80, 10)) +
   ylab("Mean oocyst load\namong infected mosquitoes") + xlab("Temperature (°C)")
 
 delta_plot <- ggplot(data = smooth_D) +
   geom_ribbon(aes(x = temp_, ymin = lower, ymax = upper, fill = model), alpha = 0.2) +
-  geom_line(aes(x = temp_, y = median, col = model), size = 1.5) +
+  geom_line(aes(x = temp_, y = median, col = model), linewidth = 1.5) +
   geom_pointrange(data = o_data_plot, aes(x = temp, y = prevalence, ymin = lower, ymax = upper), alpha = 0.75, shape = 21,
                   fill = "black", col = "black", size = 0.875) +
   geom_pointrange(data = subset(out, label == "Parameter: delta[O]" & model == "independent"),  
@@ -568,7 +679,7 @@ delta_plot <- ggplot(data = smooth_D) +
 
 delta_S_plot <- ggplot(data = smooth_DS) +
   geom_ribbon(aes(x = temp_, ymin = lower, ymax = upper, fill = model), alpha = 0.2) +
-  geom_line(aes(x = temp_, y = median, col = model), size = 1.5) +
+  geom_line(aes(x = temp_, y = median, col = model), linewidth = 1.5) +
   geom_pointrange(data = subset(out, label == "Parameter: delta[S]" & model == "independent"),  
                   aes(x = temp_, y = median, ymin = lower, ymax = upper, col = model, fill = model),
                   alpha = 0.75, shape = 21, size = 0.875) +
@@ -583,7 +694,7 @@ delta_S_plot <- ggplot(data = smooth_DS) +
 HMTP_plot <- ggplot(data = delta %>% mutate(model = "pooled",
                                label = "delta[O]*delta[S]")) +
   geom_ribbon(aes(x = temp_, ymin = lower, ymax = upper, fill = model), alpha = 0.2) +
-  geom_line(aes(x = temp_, y = median, col = model), size = 1.5) +
+  geom_line(aes(x = temp_, y = median, col = model), linewidth = 1.5) +
   geom_pointrange(data = i_delta_q %>% mutate(model = "independent"), 
                   aes(x = temp, y = median, ymin = lower, ymax = upper, fill = model, col = model), 
                   shape = 21, alpha = 0.75, size = 0.875) +
@@ -601,10 +712,9 @@ mu_plot +
     HMTP_plot + 
     plot_layout(ncol = 2) +
   plot_layout(guides = 'collect') +
-  plot_annotation(tag_levels = 'A')
+  plot_annotation(tag_levels = 'a') &
+  theme(plot.tag = element_text(face = 'bold'))
 dev.off()
-
-
 
 #############################
 ##### plotting the PDFs #####
@@ -643,7 +753,7 @@ EIP_PDF_17 <-
   
   geom_ribbon(aes(x = t, ymin = lower, ymax = upper), fill = "#56B4E9", alpha = 0.3) +
   
-  geom_line(aes(x = t, y = median), col = "#56B4E9", size = 1) +
+  geom_line(aes(x = t, y = median), col = "#56B4E9", linewidth = 1) +
   
   ylab("Density") + xlab("EIP (days)") +
   
@@ -673,7 +783,7 @@ EIP_PDF_21 <-
                aes(x = EIP_50, xend = EIP_50, y = 0, yend = median), col = "#009E73", size = 1) +
   
   geom_ribbon(aes(x = t, ymin = lower, ymax = upper), fill = "#CC79A7", alpha = 0.3) +
-  geom_line(aes(x = t, y = median), col = "#CC79A7", size = 1) +
+  geom_line(aes(x = t, y = median), col = "#CC79A7", linewidth = 1) +
   ylab("Density") + xlab("EIP (days)") +
   geom_vline(data = subset(degree_day, EIP == "EIP[50]" & temp %in% c(21)) %>% 
                mutate(temp_label = paste0("PDF: ", temp,"°C")),
@@ -705,7 +815,7 @@ EIP_PDF_25 <-
   ylab("Density") + xlab("EIP (days)") +
   geom_vline(data = subset(degree_day, EIP == "EIP[50]" & temp %in% c(25)) %>% 
                mutate(temp_label = paste0("PDF: ", temp,"°C")),
-             aes(xintercept = EIP_),col = "black", linetype = 2, size = 1) +
+             aes(xintercept = EIP_),col = "black", linetype = 2, linewidth = 1) +
   facet_wrap(~temp_label) +
   scale_x_continuous(breaks = seq(0, 35, 10), limits = c(0, 35)) +
   scale_y_continuous(limits = c(0, 0.3), breaks = seq(0, 0.3, 0.1)) +
@@ -729,7 +839,7 @@ EIP_PDF_29 <-
                aes(x = EIP_50, xend = EIP_50, y = 0, yend = median), col = "#009E73", size = 1) +
   
   geom_ribbon(aes(x = t, ymin = lower, ymax = upper), fill = "grey70", alpha = 0.3) +
-  geom_line(aes(x = t, y = median), col = "grey70", size = 1) +
+  geom_line(aes(x = t, y = median), col = "grey70", linewidth = 1) +
   ylab("Density") + xlab("EIP (days)") +
   geom_vline(data = subset(degree_day, EIP == "EIP[50]" & temp %in% c(29)) %>% 
                mutate(temp_label = paste0("PDF: ", temp,"°C")),
@@ -771,7 +881,8 @@ EIP_plot +
   inset_element(EIP_PDF_21, left = 0.425, right = 0.725, bottom = 0.7,  top = 1.1) +
   inset_element(EIP_PDF_25, left = 0.75, right = 1.05, bottom = 0.7, top = 1.1) +
   inset_element(EIP_PDF_29, left = 0.8, right = 1.1, bottom = 0.25, top = 0.65) +
-  plot_annotation(tag_levels = 'A')
+  plot_annotation(tag_levels = 'A') &
+  theme(plot.tag = element_text(face = 'bold'))
 dev.off()
 
 #################################
@@ -796,12 +907,14 @@ calc_pr_two <- function(temp_in, scaled_temp_in, params_temp){
                     k = o_g[, "k"],
                     t = dd)
   
-  dd_tail <- ifelse(p_left<p_right, "left", "right")
+  # dd_tail <- ifelse(p_left<p_right, "left", "right")
+  # 
+  # p_one <- unlist(lapply(seq(1, nrow(o_g), 1), 
+  #        function(x){
+  #           if(dd_tail[x] == "left"){p_left[x]}else{p_right[x]}
+  #        }))
   
-  p_one <- unlist(lapply(seq(1, nrow(o_g), 1), 
-         function(x){
-            if(dd_tail[x] == "left"){p_left[x]}else{p_right[x]}
-         }))
+  p_one <- pmin(p_left, p_right)
   
   return(data.frame("temp" = temp_in,
                     "median_p_g" = median(p_right),
@@ -838,17 +951,20 @@ ggplot(data = p_df, aes(x = temp, y = median_p_g, ymin = lower_p_g, ymax = upper
   geom_line(size = 1.5) +
   scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.1)) +
   scale_x_continuous(breaks = seq(17, 30, 1)) +
-  ylab(expression(paste("1 - ",italic(F(D))))) + xlab("Temperature (°C)") +
+  ylab(expression(paste("1 - ",italic(F(EIP[D]))))) + xlab("Temperature (°C)") +
   theme(text = element_text(size = 20)) +
+  
 ggplot(data = p_df, aes(x = temp, y = median_p_one, ymin = lower_p_one, ymax = upper_p_one)) +
   geom_ribbon(fill = "grey70", alpha = 0.45) +
   geom_line(size = 1.5) +
-  geom_hline(yintercept = 0.05, linetype = 2, size = 1) +
+  #geom_hline(yintercept = 0.05, linetype = 2, size = 1) +
   scale_y_continuous(limits = c(0, 0.5), breaks = seq(0, 0.5, 0.05)) +
   scale_x_continuous(breaks = seq(17, 30, 1)) +
-  ylab(expression(paste("min(1 - ",italic(F(D)),", ",italic(F(D)),")"))) + xlab("Temperature (°C)") +
+  ylab(expression(paste("min(1 - ",italic(F(EIP[D])),", ",italic(F(EIP[D])),")"))) + xlab("Temperature (°C)") +
   theme(text = element_text(size = 20)) +
-  plot_annotation(tag_levels = 'A')
+
+  plot_annotation(tag_levels = 'A') &
+  theme(plot.tag = element_text(face = 'bold'))
 dev.off()
 
 # p-value calculation by sampling
