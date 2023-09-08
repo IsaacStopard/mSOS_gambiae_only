@@ -6,14 +6,17 @@ This GitHub repository provides all code necessary to run the analyses for this 
 Last updated: 08/09/2023
 
 **Stan models**
+
 1️⃣ mSOS_multi_8.stan - implements the pooled model in Stan. Note to reduce computational time the likelihood for each unique combination of datapoint values is only calculated once.
 
 2️⃣ mSOS_multi - implements the independent model fits.
 
 **Running**
+
 1️⃣ run_model_multi_temp_only.R - provides R code to run the Stan models
 
 **Helper functions**
+
 1️⃣ plot_model_temp_only.R - plot the model fits and run some analyses
 
 2️⃣ functions_temp_only.R - consistent functions to load in and wrangle the data
@@ -23,6 +26,7 @@ Last updated: 08/09/2023
 4️⃣ wrangle_Eunho_new_data.R - wrangle the data into a format for R
 
 Notes
+
 ⚠️ Please note that the Stan outputs are not saved on the Github repository, so run_model_multi_temp_only.R will need to be run before attempting to visualise the results.
 
 ⚠️ This code is released with no support and we cannot endorse any outputs from the model other than those we generate.
