@@ -1,69 +1,23 @@
 rm(list = ls())
+
+# packages
 library(tidyverse); library(rstan); library(shinystan); library(cowplot); 
 library(zipfR); library(truncnorm);library(ggpmisc); library(patchwork); library(DescTools);
 library(calculus)
 options(mc.cores = parallel::detectCores())
 rstan_options(auto_write = TRUE)
 
+# functions and data that are used in multiple files
 source(file = "utils/functions_temp_only.R")
 source(file = "utils/plotting_functions_temp_only.R")
 
+# changing the default ggplot theme
 theme_set(theme_bw() + 
             theme(panel.grid.major = element_blank(), 
                   panel.grid.minor = element_blank(),
                   text = element_text(size = 18)))
 
-###########################
-### reading in the data ###
-###########################
-
-s_data <- read.csv(file = "data/processed/ES_new_constant_temp_spz_processed.csv")
-o_data <- read.csv(file = "data/processed/ES_new_constant_temp_oocyst_processed.csv")
-
-s_data <- s_data[,c(2:ncol(s_data))]
-s_data$index_ref <- rep(1, nrow(s_data))
-s_data$gametocytemia <- round(s_data$gametocytemia, digits = 5)
-
-# wrangling the oocyst data
-o_data <- o_data[,c(2:ncol(o_data))]
-o_data$gametocytemia <- round(o_data$gametocytemia, digits = 5)
-o_data$index_ref <- rep(1, nrow(o_data))
-
-s_data <- s_data[-which(s_data$temp == 17 & s_data$gametocytemia == 0.00024),]
-o_data <- o_data[-which(o_data$temp == 17 & o_data$gametocytemia == 0.00024),]
-
-all_data <- temp_g_indexing(o_data, s_data)
-#saveRDS(all_data, file = "data/processed/all_data_processed.rds")
-s_data_in <- generate_prevalence(all_data$sporozoite_data)
-o_data_in <- oocyst_intensity_indexing(all_data$oocyst_data)
-
-# values from previous model fitting to Anopheles stephensi data
-mean_temp <- 27.9032
-sd_temp <-  3.471223
-m_rate_O <- 1.44
-c_rate_O <- 4.19
-
-# don't extrapolate beyond 21 degrees celsius
-scaled_temp <- (all_data$unique_temp - mean_temp) / sd_temp
-rate_O_prior <- scaled_temp * m_rate_O + c_rate_O
-rate_O_prior[which(rate_O_prior < 1)] <- rep(rate_O_prior[5], length(which(rate_O_prior < 1)))
-rate_O_prior <- rep(max(rate_O_prior), length(rate_O_prior))
-# posterior predictive distribution times
-PPD_times <- sort(unique(c(seq(0,49,0.5), s_data_in$DPI, o_data_in$unique_oocyst_intensity$DPI)))
-length_ppd_times <- length(PPD_times)
-
-PPD_times_O <- sort(unique(c(seq(0,34.0,0.5), o_data_in$unique_oocyst_intensity$DPI)))
-length_ppd_times_O <- length(PPD_times_O)
-
-iterations <- 5500
-warmup <- 3000
-chains <- 4
-
-s_data_in_temp <- generate_prevalence(subset(all_data$sporozoite_data, index_g!=1)) %>% 
-  mutate(temp_label = paste0(temp, "°C"))
-
-o_data_in_temp <- oocyst_intensity_indexing_temp(subset(all_data$oocyst_data, index_g!=1))
-
+# reading in the EIP model fits
 fit_temp <- readRDS("fits/fit_mSOS_temp_only_f2_f3.rds")
 fit_all_temp <- readRDS(file = "fits/fit_mSOS_multi_temp.rds")
 
@@ -75,12 +29,18 @@ pars <- c("shape_O", "rate_O", "a_shape_S", "b_shape_S", "c_shape_S",
           "a_mu", "b_mu", "c_mu",
           "k")
 
+# model diagnostic plots
+png(file = "traceplot_pooled_model.png", height = 500, width = 1000)
+traceplot(fit_temp, pars = pars)
+dev.off()
+
 ##############################
 ### visualising model fits ###
 ##############################
 
 ### posterior predictions
-# sporozoites
+### sporozoites
+# extracting the posterior predicted sporozoite prevalence from the MCMC samples
 S_ppd_df <- rbind(run_prop_ppd_df(fit_temp, "pooled", "S_prevalence_ppd", length_ppd_times, PPD_times),
                   run_prop_ppd_df(fit_all_temp, "independent", "S_prevalence_ppd", length_ppd_times, PPD_times)) %>% 
   mutate(temp_label = paste0(temp, "°C"))
@@ -94,19 +54,22 @@ S_plot <- ggplot(data = S_ppd_df) +
   scale_fill_manual(values = c("#56B4E9", "#E69F00"), name = "") +
   scale_y_continuous(labels = scales::percent)
 
-# oocysts
+### oocysts
+# generating the oocyst prevalence estimates from the data
 o_data_plot <- generate_prevalence_temp(subset(all_data$oocyst_data, index_g!=1)) %>% 
   mutate(temp_label = paste0(temp, "°C"))
 
+# calculating the mean oocyst intensities from the data for all mosquitoes that were dissected from oocysts
 oocyst_number <- generate_oocyst_intensity_summary(subset(all_data$oocyst_data, index_g!=1))
 oocyst_number[,"temp"] <- all_data$unique_temp[oocyst_number$index_temp]
 oocyst_number[,"temp_label"] <- paste0(oocyst_number[,"temp"],"°C")
 
-# infected mosquitoes
+# calculating the mean oocyst intensities from the data for infected mosquitoes (with oocysts only)
 oocyst_number_inf <- generate_oocyst_intensity_summary(subset(all_data$oocyst_data, index_g!=1 & Oocyst_number>0))
 oocyst_number_inf[,"temp"] <- all_data$unique_temp[oocyst_number_inf$index_temp]
 oocyst_number_inf[,"temp_label"] <- paste0(oocyst_number_inf[,"temp"],"°C")
 
+# generating the posterior predicted oocyst intensities
 O_I_ppd <- rbind(run_prop_ppd_df(fit_temp, "pooled", "O_intsy_ppd", length_ppd_times_O, PPD_times_O),
                  run_prop_ppd_df(fit_all_temp, "independent", "O_intsy_ppd", length_ppd_times_O, PPD_times_O)) %>% 
   mutate(temp_label = paste0(temp, "°C"))
@@ -134,22 +97,10 @@ O_I_inf_plot <- ggplot(data = O_I_inf_ppd) + geom_ribbon(aes(x = DPI, ymin = low
 legend <- get_legend(S_plot)
 
 png("results_temp/fits_plot.png", height = 900, width = 950)
-
 (((S_plot + theme(legend.position = "none")) / (O_I_inf_plot + theme(legend.position = "none"))) | legend) +
   plot_layout(widths = c(0.875, 0.175)) +
   plot_annotation(tag_levels = list(c("a", "b"), "")) &
   theme(plot.tag = element_text(face = 'bold'))
-
-# plot_grid(
-#   plot_grid(
-#     S_plot + theme(legend.position = "none"),
-#     O_I_inf_plot + theme(legend.position = "none"),
-#     labels = c("A", "B", ""),
-#     nrow = 2),
-#   legend, nrow = 1, 
-#   labels = c("",""),
-#   rel_widths = c(0.875, 0.175)
-#          )
 dev.off()
 
 png("results_temp/fits_plot_O.png", height = 850, width = 975)
@@ -159,30 +110,26 @@ png("results_temp/fits_plot_O.png", height = 850, width = 975)
   theme(plot.tag = element_text(face = 'bold'))
 dev.off()
 
-png("results_temp/fits_plot_S.png", height = 525, width = 1000)
-S_plot
-dev.off()
-
 ##############################
 ### actual vs fitted plots ###
 ##############################
 
-# Brier score calculation
-
+# Brier score calculation for sporozoite infected mosquitoes
+# individual mosquito dissection data
 s_data_brier <- subset(s_data, gametocytemia != 0.00024)
 
+# matching the individual mosquito dissection data to the predicted sporozoite prevalence values for each day post infection and temperature
 s_data_brier$pooled_median <- subset(S_ppd_df, model == "pooled")[match(interaction(round(s_data_brier$DPI, digits = 2), s_data_brier$temp), 
       interaction(round(subset(S_ppd_df, model == "pooled")$DPI, digits = 2), subset(S_ppd_df, model == "pooled")$temp)), "median"]
 
 s_data_brier$ind_median <- subset(S_ppd_df, model == "independent")[match(interaction(round(s_data_brier$DPI, digits = 2), s_data_brier$temp), 
                                                                         interaction(round(subset(S_ppd_df, model == "independent")$DPI, digits = 2), 
                                                                                     subset(S_ppd_df, model == "independent")$temp)), "median"]
-
+# calculating the Brier scores and Brier skill scores
 s_data_brier <- s_data_brier %>% rowwise() %>% mutate(res_pooled = (presence - pooled_median)^2,
                         res_ind = (presence - ind_median)^2) %>% ungroup() %>% group_by(temp) %>% 
   mutate(mean = mean(presence),
          ) %>% ungroup() %>% rowwise() %>% mutate(res_mean = (presence - mean)^2)
-
 
 s_data_brier_text <- s_data_brier %>% group_by(temp) %>% summarise(brier_pooled = sum(res_pooled)/n(),
                                                                    brier_ind = sum(res_ind)/n(),
@@ -191,8 +138,12 @@ s_data_brier_text <- s_data_brier %>% group_by(temp) %>% summarise(brier_pooled 
                                                                    scaled_brier_ind = 1 - brier_ind / brier_mean) %>% 
   mutate(temp_label = paste0(temp, "°C"))
 
-# sporozoites
-gen_a_f_S <- function(s_data_in_temp, temp_S_ppd, model){
+# plotting
+# function to match the actual and predicted values for both models
+# data wrangling
+gen_a_f_S <- function(s_data_in_temp, 
+                      temp_S_ppd, 
+                      model){
   inds_m <- match(interaction(round(s_data_in_temp$DPI, digits = 1), s_data_in_temp$temp), interaction(round(temp_S_ppd$DPI, digits = 1), temp_S_ppd$temp))
   a_f_df <- data.frame("median" = temp_S_ppd[inds_m, "median"],
                        "lower" = temp_S_ppd[inds_m, "lower"],
@@ -265,11 +216,7 @@ r2_o <- a_f_df_pl_plot %>% group_by(model, mosq_pop) %>% summarise(r2 = 1 - (sum
 actual_fitted_O <- ggplot(data = a_f_df_pl_plot %>% mutate(temp = paste0(temp,"°C")), aes(x = actual, y = median)) + 
   geom_pointrange(aes(x = actual, y = median, ymin = lower, ymax = upper, col = temp), size = 0.875) +
   geom_errorbarh(aes(xmax = a_upper, xmin = a_lower, height = 0,
-                     col = temp)) + 
-  # geom_smooth(aes(x = actual, y = median), method = "lm", se = FALSE,
-  #             col = "black", size = 1.5) +
-  # stat_poly_eq(formula = y ~ x, aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")), parse = TRUE,
-  #              label.x = 0.95, label.y = 0.05) +
+                     col = temp)) +
   facet_grid(vars(model), vars(mosq_pop), scales = "free") + 
   geom_abline(aes(slope=1, intercept=0), linetype = 2, linewidth = 1.5, alpha = 0.75) +
   xlab("Actual mean oocyst intensity") + ylab("Fitted mean oocyst intensity") +
@@ -278,23 +225,6 @@ actual_fitted_O <- ggplot(data = a_f_df_pl_plot %>% mutate(temp = paste0(temp,"�
              aes(x = 50, y = 4, 
                  label = r_lab),
             size = 5, col = "black", alpha = 0.5, parse = TRUE)
-
-# png("results_temp/actual_fitted_O_S.png", height = 1000, width = 1000)
-# plot_grid(
-#   plot_grid(actual_fitted_O, NULL, rel_widths = c(1, 0.05), nrow = 1),
-#           actual_fitted_S,
-#           labels = c("A", "B"),
-#           nrow = 2, rel_heights = c(0.85, 1)
-#           )
-# dev.off()
-
-png("results_temp/actual_fitted_O.png", height = 500, width = 700)
-actual_fitted_O
-dev.off()
-
-png("results_temp/actual_fitted_S.png", height = 950, width = 1250)
-actual_fitted_S
-dev.off()
 
 png("results_temp/actual_fitted_O_S.png", height = 1100, width = 1100)
 (actual_fitted_O + plot_spacer() + 
@@ -350,16 +280,18 @@ write.csv(plot_df, file = "results_temp/temp_model_EIP_values.csv")
 # calculating the probability the degree day model EIP is > than EIP50
 p_EIP_50_df <- data.frame(temp = temps,
                           p_EIP50 = sapply(seq(1, length(temps)), function(i, EIP_index, temps){
-                            sum(EIP_index$EIP_50[,i] > 111/(temps[i] - 16))/length(EIP_index$EIP_50[,i])
+                            sum(EIP_index$EIP_50[,i] < 111/(temps[i] - 16))/length(EIP_index$EIP_50[,i])
                           }, temps = temps, EIP_index = EIP_index))
 
-f <- approxfun(x = subset(p_EIP_50_df, p_EIP50 > 0 & p_EIP50 < 0.99)$p_EIP50, 
-               y = subset(p_EIP_50_df, p_EIP50 > 0 & p_EIP50 < 0.99)$temp, method = "linear")
+f <- approxfun(x = subset(p_EIP_50_df, p_EIP50 > 0.02 & p_EIP50 < 0.98)$p_EIP50, 
+               y = subset(p_EIP_50_df, p_EIP50 > 0.02 & p_EIP50 < 0.98)$temp, method = "linear")
+
+f(0.95)
 
 p_EIP_50_plot <- ggplot(data = p_EIP_50_df, aes(x = temp, y = p_EIP50)) + 
   scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.2)) +
   scale_x_continuous(breaks = seq(18, 30, 2)) +
-  ylab(expression(paste(italic(p(EIP[50]>EIP[D]))))) + xlab("Temperature (°C)") +
+  ylab(expression(paste(italic(p(EIP[50]<EIP[D]))))) + xlab("Temperature (°C)") +
   #geom_hline(yintercept = 0.5, linetype = 2, size = 1) +
   theme(text = element_text(size = 18)) +
   geom_line(linewidth = 1.5) +
@@ -389,7 +321,7 @@ EIP_p50_plot
 dev.off()
 
 EIP_u <- calc_EIP_v(EIP_index = EIP_index, temps = temps, n_iter = 10000)
-saveRDS(EIP_u, file = "results_temp/EIP_u.rds")
+#saveRDS(EIP_u, file = "results_temp/EIP_u.rds")
 EIP_u <- readRDS(file = "results_temp/EIP_u.rds")
 
 ###############################
@@ -716,328 +648,6 @@ mu_plot +
   theme(plot.tag = element_text(face = 'bold'))
 dev.off()
 
-#############################
-##### plotting the PDFs #####
-#############################
-
-t <- seq(0, 100, 0.1)
-n_t <- length(t)
-
-EIP_PDF_df <- vector(mode = "list", length = length(all_data$unique_temp))
-for(i in 1:length(all_data$unique_temp)){
-  EIP_PDF_df[[i]] <- calc_PDF(get_EIP_params_temp(temp = all_data$unique_temp_scaled[i], params = params_temp)) %>% 
-    mutate(temp = all_data$unique_temp[i])
-}
-EIP_PDF_df <- bind_rows(EIP_PDF_df)
-
-EIP_PDF_df %>% mutate(temp_label = paste0("PDF: ", temp,"°C"))
-EIP_PDF_df[,"EIP_10"] <- EIP_u[match(EIP_PDF_df$temp, EIP_u$temp),"EIP_10"]
-EIP_PDF_df[,"EIP_50"] <- EIP_u[match(EIP_PDF_df$temp, EIP_u$temp),"EIP_50"]
-EIP_PDF_df[,"EIP_90"] <- EIP_u[match(EIP_PDF_df$temp, EIP_u$temp),"EIP_90"]
-EIP_PDF_df[,"dist_mean"] <- EIP_u[match(EIP_PDF_df$temp, EIP_u$temp),"mean"]
-EIP_PDF_df[,"dist_median"] <- EIP_u[match(EIP_PDF_df$temp, EIP_u$temp),"EIP_50"]
-
-EIP_PDF_17 <-
-  ggplot(data = subset(EIP_PDF_df, median > 0.000000001 & temp %in% c(17))) +
-  geom_ribbon(data = subset(EIP_PDF_df, median > 0.000000001 & temp %in% c(17)) %>% 
-                mutate(t = ifelse(t<EIP_10 | t>EIP_90, NA, t)) %>% na.omit(),
-              aes(x = t, ymin = 0, ymax = median), fill = "#009E73", alpha = 0.25) +
-  
-  geom_segment(data = subset(EIP_PDF_df, median > 0.000000001 & temp %in% c(17)) %>% 
-              mutate(t = ifelse(round(t, digits = 1)!=round(dist_mean, digits = 1), NA, t)) %>% na.omit(),
-            aes(x = dist_mean, xend = dist_mean, y = 0, yend = mean), col = "#009E73", size = 1, linetype = 3) +
-  
-  geom_segment(data = subset(EIP_PDF_df, mean > 0.000000001 & temp %in% c(17)) %>% 
-                 mutate(t = ifelse(t!=round(EIP_50, digits = 1), NA, t)) %>% na.omit(),
-               aes(x = EIP_50, xend = EIP_50, y = 0, yend = median), col = "#009E73", size = 1) +
-  
-  geom_ribbon(aes(x = t, ymin = lower, ymax = upper), fill = "#56B4E9", alpha = 0.3) +
-  
-  geom_line(aes(x = t, y = median), col = "#56B4E9", linewidth = 1) +
-  
-  ylab("Density") + xlab("EIP (days)") +
-  
-  geom_vline(data = subset(degree_day, EIP == "EIP[50]" & temp %in% c(17)) %>% 
-               mutate(temp_label = paste0("PDF: ", temp,"°C")),
-             aes(xintercept = EIP_),col = "black", linetype = 2, size = 1) +
-  facet_wrap(~temp_label) +
-  scale_x_continuous(breaks = seq(0, 100, 10)) +
-  scale_y_continuous(breaks = seq(0, 0.075, 0.025), limits = c(0, 0.075)) +
-  theme_bw() + theme(text = element_text(size = 14)) +
-  theme(plot.background = element_rect(colour = "#56B4E9", fill=NA, size=1),
-        plot.margin = margin(0.05, 0.25, 0.05, 0.05, "cm"))
-
-EIP_PDF_21 <-
-  ggplot(data = subset(EIP_PDF_df, median > 0.000000001 & temp %in% c(21))) +
-  
-  geom_ribbon(data = subset(EIP_PDF_df, median > 0.000000001 & temp %in% c(21)) %>% 
-                mutate(t = ifelse(t<EIP_10 | t>EIP_90, NA, t)) %>% na.omit(),
-              aes(x = t, ymin = 0, ymax = median), fill = "#009E73", alpha = 0.25) +
-  
-  geom_segment(data = subset(EIP_PDF_df, median > 0.000000001 & temp %in% c(21)) %>% 
-                 mutate(t = ifelse(t!=round(dist_mean, digits = 1), NA, t)) %>% na.omit(),
-               aes(x = dist_mean, xend = dist_mean, y = 0, yend = median), col = "#009E73", size = 1, linetype = 3) +
-  
-  geom_segment(data = subset(EIP_PDF_df, median > 0.000000001 & temp %in% c(21)) %>% 
-                 mutate(t = ifelse(t!=round(EIP_50, digits = 1), NA, t)) %>% na.omit(),
-               aes(x = EIP_50, xend = EIP_50, y = 0, yend = median), col = "#009E73", size = 1) +
-  
-  geom_ribbon(aes(x = t, ymin = lower, ymax = upper), fill = "#CC79A7", alpha = 0.3) +
-  geom_line(aes(x = t, y = median), col = "#CC79A7", linewidth = 1) +
-  ylab("Density") + xlab("EIP (days)") +
-  geom_vline(data = subset(degree_day, EIP == "EIP[50]" & temp %in% c(21)) %>% 
-               mutate(temp_label = paste0("PDF: ", temp,"°C")),
-             aes(xintercept = EIP_),col = "black", linetype = 2, size = 1) +
-  facet_wrap(~temp_label) +
-  scale_x_continuous(breaks = seq(0, 50, 10), limits = c(0, 55)) +
-  scale_y_continuous(breaks = seq(0, 0.2, 0.05), limits = c(0, 0.2)) +
-  theme_bw() + theme(text = element_text(size = 14)) +
-  theme(plot.background = element_rect(colour = "#CC79A7", fill=NA, size=1),
-        plot.margin = margin(0.05, 0.25, 0.05, 0.05, "cm"))
-
-EIP_PDF_25 <-
-  ggplot(data = subset(EIP_PDF_df, median > 0.000000001 & temp %in% c(25))) +
-  
-  geom_ribbon(data = subset(EIP_PDF_df, median > 0.000000001 & temp %in% c(25)) %>% 
-                mutate(t = ifelse(t<EIP_10 | t>EIP_90, NA, t)) %>% na.omit(),
-              aes(x = t, ymin = 0, ymax = median), fill = "#009E73", alpha = 0.25) +
-  
-  geom_segment(data = subset(EIP_PDF_df, median > 0.000000001 & temp %in% c(25)) %>% 
-                 mutate(t = ifelse(round(t, digits = 1)!=round(dist_mean, digits = 1), NA, t)) %>% na.omit(),
-               aes(x = dist_mean, xend = dist_mean, y = 0, yend = mean), col = "#009E73", size = 1, linetype = 3) +
-  
-  geom_segment(data = subset(EIP_PDF_df, median > 0.000000001 & temp %in% c(25)) %>% 
-                 mutate(t = ifelse(round(t, digits = 1)!=round(EIP_50, digits = 1), NA, t)) %>% na.omit(),
-               aes(x = EIP_50, xend = EIP_50, y = 0, yend = median), col = "#009E73", size = 1) +
-  
-  geom_ribbon(aes(x = t, ymin = lower, ymax = upper), fill = "#E69F00", alpha = 0.3) +
-  geom_line(aes(x = t, y = median), col = "#E69F00", size = 1) +
-  ylab("Density") + xlab("EIP (days)") +
-  geom_vline(data = subset(degree_day, EIP == "EIP[50]" & temp %in% c(25)) %>% 
-               mutate(temp_label = paste0("PDF: ", temp,"°C")),
-             aes(xintercept = EIP_),col = "black", linetype = 2, linewidth = 1) +
-  facet_wrap(~temp_label) +
-  scale_x_continuous(breaks = seq(0, 35, 10), limits = c(0, 35)) +
-  scale_y_continuous(limits = c(0, 0.3), breaks = seq(0, 0.3, 0.1)) +
-  theme_bw() + theme(text = element_text(size = 14)) +
-  theme(plot.background = element_rect(colour = "#E69F00", fill=NA, size=1),
-        plot.margin = margin(0.05, 0.25, 0.05, 0.05, "cm"))
-
-EIP_PDF_29 <-
-  ggplot(data = subset(EIP_PDF_df, median > 0.000000001 & temp %in% c(29))) +
-  
-  geom_ribbon(data = subset(EIP_PDF_df, median > 0.000000001 & temp %in% c(29)) %>% 
-                mutate(t = ifelse(t<EIP_10 | t>EIP_90, NA, t)) %>% na.omit(),
-              aes(x = t, ymin = 0, ymax = median), fill = "#009E73", alpha = 0.25) +
-  
-  geom_segment(data = subset(EIP_PDF_df, median > 0.000000001 & temp %in% c(29)) %>% 
-                 mutate(t = ifelse(round(t, digits = 1)!=round(dist_mean, digits = 1), NA, t)) %>% na.omit(),
-               aes(x = dist_mean, xend = dist_mean, y = 0, yend = mean), col = "#009E73", size = 1, linetype = 3) +
-  
-  geom_segment(data = subset(EIP_PDF_df, median > 0.000000001 & temp %in% c(29)) %>% 
-                 mutate(t = ifelse(round(t, digits = 1)!=round(EIP_50, digits = 1), NA, t)) %>% na.omit(),
-               aes(x = EIP_50, xend = EIP_50, y = 0, yend = median), col = "#009E73", size = 1) +
-  
-  geom_ribbon(aes(x = t, ymin = lower, ymax = upper), fill = "grey70", alpha = 0.3) +
-  geom_line(aes(x = t, y = median), col = "grey70", linewidth = 1) +
-  ylab("Density") + xlab("EIP (days)") +
-  geom_vline(data = subset(degree_day, EIP == "EIP[50]" & temp %in% c(29)) %>% 
-               mutate(temp_label = paste0("PDF: ", temp,"°C")),
-             aes(xintercept = EIP_),col = "black", linetype = 2, size = 1) +
-  facet_wrap(~temp_label) +
-  scale_x_continuous(breaks = seq(0, 30, 10), limits = c(0, 30)) +
-  scale_y_continuous(limits = c(0, 0.4), breaks = seq(0, 0.4, 0.1)) +
-  theme_bw() + theme(text = element_text(size = 14)) +
-  theme(plot.background = element_rect(colour = "grey70", fill=NA, size=1),
-        plot.margin = margin(0.05, 0.25, 0.05, 0.05, "cm"))
-
-EIP_plot <- ggplot(data = EIP_u) + 
-  geom_ribbon(aes(x = temp, ymin = EIP_10, ymax = EIP_90), alpha = 0.45, fill = "#009E73") +
-  geom_line(aes(x = temp, y = EIP_50), size = 1.5, col = "#009E73") +
-  geom_line(data = degree_day, 
-            aes(x = temp, y = EIP_), linetype = 2.5, size = 1.25) +
-  scale_x_continuous(limits = c(17, 30), breaks = seq(17, 30, 1)) +
-  scale_y_continuous(limits = c(0, 115), breaks = seq(0, 110, 10)) +
-  ylab("EIP (days)") + xlab("Temperature (°C)") +
-  theme(axis.line = element_line(),
-        panel.border = element_blank(),
-        plot.margin = margin(1.5, 2.4, 0.25, 0.25,"cm"))
-
-png(file = "results_temp/EIP_PDF_plot.png", height = 550, width = 850)
-EIP_plot +
-  geom_segment(aes(x = 20, xend = 17, yend = 72.22629, y = 83), size = 0.5, col = "#56B4E9",
-               arrow = arrow(length = unit(0.25, "cm")), alpha = 0.8) +
-
-  geom_segment(aes(x = 24, xend = 21, yend = 24.76451, y = 83), size = 0.5, col = "#CC79A7",
-               arrow = arrow(length = unit(0.25, "cm")), alpha = 0.8) +
-
-  geom_segment(aes(x = 28, xend = 25, yend = 15.20683, y = 83), size = 0.5, col = "#E69F00",
-               arrow = arrow(length = unit(0.25, "cm")), alpha = 0.8) +
-  
-  geom_segment(aes(x = 30, xend = 29, yend = 11.30555, y = 26), size = 0.5, col = "grey70",
-               arrow = arrow(length = unit(0.25, "cm")), alpha = 0.8) +
-
-  inset_element(EIP_PDF_17, left = 0.1, right = 0.4, bottom = 0.7,  top = 1.1) +
-  inset_element(EIP_PDF_21, left = 0.425, right = 0.725, bottom = 0.7,  top = 1.1) +
-  inset_element(EIP_PDF_25, left = 0.75, right = 1.05, bottom = 0.7, top = 1.1) +
-  inset_element(EIP_PDF_29, left = 0.8, right = 1.1, bottom = 0.25, top = 0.65) +
-  plot_annotation(tag_levels = 'A') &
-  theme(plot.tag = element_text(face = 'bold'))
-dev.off()
-
-#################################
-### EIP-degree day comparison ###
-#################################
-
-# calculating probability the EIP is more extreme than the degree day estimate
-calc_pr_two <- function(temp_in, scaled_temp_in, params_temp){
-  print(paste(temp_in))
-  o_g <- get_EIP_params_temp(temp = scaled_temp_in, params = params_temp)
-  dd <- 111/(temp_in - 16)
-  
-  p_right <- 1 - EIP_CDF(a = o_g[,"shape_total_S"], 
-                         b = o_g[, "rate_total_S"], 
-                         mu = o_g[, "mu"], 
-                         k = o_g[, "k"],
-                         t = dd)
-  
-  p_left <- EIP_CDF(a = o_g[,"shape_total_S"], 
-                    b = o_g[, "rate_total_S"], 
-                    mu = o_g[, "mu"], 
-                    k = o_g[, "k"],
-                    t = dd)
-  
-  # dd_tail <- ifelse(p_left<p_right, "left", "right")
-  # 
-  # p_one <- unlist(lapply(seq(1, nrow(o_g), 1), 
-  #        function(x){
-  #           if(dd_tail[x] == "left"){p_left[x]}else{p_right[x]}
-  #        }))
-  
-  p_one <- pmin(p_left, p_right)
-  
-  return(data.frame("temp" = temp_in,
-                    "median_p_g" = median(p_right),
-                    "lower_p_g" = quantile(p_right, probs = c(0.025))[1],
-                    "upper_p_g" = quantile(p_right, probs = c(0.975))[1],
-                    "mean_p_g" = mean(p_right),
-                    
-                    "median_p_one" = median(p_one),
-                    "lower_p_one" = quantile(p_one, probs = c(0.025))[1],
-                    "upper_p_one" = quantile(p_one, probs = c(0.975))[1],
-                    "mean_p_one" = mean(p_one))
-         )
-}
-
-p_df <- mapply(calc_pr_two, temp_in = seq(17, 30, 0.1), 
-               scaled_temp_in = (seq(17, 30, 0.1) - all_data$m_temp) / all_data$sd_temp, 
-               MoreArgs = list("params_temp" = params_temp))
-
-p_df <- data.frame("temp" = unlist(p_df["temp",]),
-                   "median_p_g" = unlist(p_df["median_p_g",]),
-                   "lower_p_g" = unlist(p_df["lower_p_g",]),
-                   "upper_p_g" = unlist(p_df["upper_p_g",]),
-                   "mean_p_g" = unlist(p_df["mean_p_g",]),
-                   
-                   "median_p_one" = unlist(p_df["median_p_one",]),
-                   "lower_p_one" = unlist(p_df["lower_p_one",]),
-                   "upper_p_one" = unlist(p_df["upper_p_one",]),
-                   "mean_p_one" = unlist(p_df["mean_p_one",]))
-
-png(file = "results_temp/CDF_plot.png", height = 450, width = 1100)
-ggplot(data = p_df, aes(x = temp, y = median_p_g, ymin = lower_p_g, ymax = upper_p_g)) +
-  geom_hline(yintercept = 0.5, linetype = 2, size = 1) +
-  geom_ribbon(fill = "grey70", alpha = 0.45) +
-  geom_line(size = 1.5) +
-  scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.1)) +
-  scale_x_continuous(breaks = seq(17, 30, 1)) +
-  ylab(expression(paste("1 - ",italic(F(EIP[D]))))) + xlab("Temperature (°C)") +
-  theme(text = element_text(size = 20)) +
-  
-ggplot(data = p_df, aes(x = temp, y = median_p_one, ymin = lower_p_one, ymax = upper_p_one)) +
-  geom_ribbon(fill = "grey70", alpha = 0.45) +
-  geom_line(size = 1.5) +
-  #geom_hline(yintercept = 0.05, linetype = 2, size = 1) +
-  scale_y_continuous(limits = c(0, 0.5), breaks = seq(0, 0.5, 0.05)) +
-  scale_x_continuous(breaks = seq(17, 30, 1)) +
-  ylab(expression(paste("min(1 - ",italic(F(EIP[D])),", ",italic(F(EIP[D])),")"))) + xlab("Temperature (°C)") +
-  theme(text = element_text(size = 20)) +
-
-  plot_annotation(tag_levels = 'A') &
-  theme(plot.tag = element_text(face = 'bold'))
-dev.off()
-
-# p-value calculation by sampling
-
-i_p_value <- function(i, o_g){
-  
-  o_g_in <- do.call("rbind", replicate(10000, o_g, simplify = FALSE))
-  
-  p_in <- runif(10000)
-  
-  EIP_1 <- Inv_EIP_CDF(a = o_g[,"shape_total_S"], 
-                       b = o_g[, "rate_total_S"], 
-                       mu = o_g[, "mu"], 
-                       k = o_g[, "k"],
-                       p = runif(1))
-  
-  EIP_2 <- Inv_EIP_CDF(a = o_g[,"shape_total_S"], 
-                       b = o_g[, "rate_total_S"], 
-                       mu = o_g[, "mu"], 
-                       k = o_g[, "k"],
-                       p = runif(1))
-  
-  diff <- abs(EIP_1 - EIP_2)
-  diff_dd <- abs(EIP_1 - dd)
-  return(sum(diff >= diff_dd)/length(diff))
-}
-
-v.i_p_value <- Vectorize(i_p_value)
-
-p <- v.i_p_value(seq(1, 10000), o_g = o_g)
-
-calc_p_value <- function(temp_in, scaled_temp_in, params_temp){
-  print(paste(temp_in))
-  o_g <- get_EIP_params_temp(temp = scaled_temp_in, params = params_temp)
-  dd <- 111/(temp_in - 16)
-  
-  # inverse transform sampling
-  
-  p <- lapply(seq(1, nrow(o_g)), function(i){
-    EIP_1 <- Inv_EIP_CDF(a = o_g[i,"shape_total_S"], 
-              b = o_g[i, "rate_total_S"], 
-              mu = o_g[i, "mu"], 
-              k = o_g[i, "k"],
-              p = runif(10000))
-    
-    EIP_2 <- Inv_EIP_CDF(a = o_g[i,"shape_total_S"], 
-                         b = o_g[i, "rate_total_S"], 
-                         mu = o_g[i, "mu"], 
-                         k = o_g[i, "k"],
-                         p = runif(10000))
-    
-    diff <- abs(EIP_1 - EIP_2)
-    diff_dd <- abs(EIP_1 - dd)
-    return(sum(diff >= diff_dd)/length(diff))
-    })
-  
-  p <- unlist(p)
-  
-  rm(list = c("o_g"))
-  return(data.frame("temp" = temp_in,
-                    "median_p" = median(p),
-                    "lower_p_g" = quantile(p, probs = c(0.025))[1],
-                    "upper_p_g" = quantile(p, probs = c(0.975))[1],
-                    "mean_p_g" = mean(p)
-                    )
-         )
-}
-
-p_values <- mapply(calc_p_value, temp_in = seq(17, 30, 0.1), 
-       scaled_temp_in = (seq(17, 30, 0.1) - all_data$m_temp) / all_data$sd_temp, 
-       MoreArgs = list("params_temp" = params_temp))
-
-saveRDS(p_values, file = "results_temp/p_values.rds")
 
 
  

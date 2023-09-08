@@ -670,7 +670,7 @@ vc_plot <- ggplot(data = params_df %>% pivot_longer(cols = c("E_j_a0", "E_j_a0_f
   geom_point(aes(fill = model, shape = feed), size = 3, alpha = 0.5) +
   geom_line(aes(colour = model), linewidth = 0.75) + 
   facet_grid(vars(location), vars(temp_source)) +
-  ylab("Expected number of infectious bites\nfrom per infected mosquito") + 
+  ylab("Expected number of infectious bites\nfrom per infected mosquito (z)") + 
   xlab("Mosquito age when infected (days)") +
   scale_shape_manual(values = c(21, 22), labels = c("Feed1", "Feed2"), name = "Feed") +
   scale_colour_manual(values = c("#009E73", "grey40"), name = "EIP model", labels = c("Suh-Stopard", "Degree-day")) +
@@ -684,7 +684,7 @@ r_plot <- ggplot(data = relative_E_j_a0,
   geom_line(aes(colour = model), linewidth = 0.75) +
   facet_wrap(vars(location), scales = "free_y") +
   scale_y_sqrt() +
-  ylab("Ratio of future:recent expected infectious\nbites per infected mosquito") +
+  ylab("Ratio of future:recent expected infectious\nbites per infected mosquito (rVC)") +
   xlab("Mosquito age when infected (days)") +
   scale_shape_manual(values = c(21, 22), labels = c("Feed1", "Feed2"), name = "Feed") +
   scale_colour_manual(values = c("grey40", "#009E73"), name = "EIP model", labels = c("Degree-day", "Suh-Stopard")) +
@@ -696,7 +696,7 @@ r_plot_nl <- r_plot + theme(legend.position = "none")
 png(file = "results_temp/VC_plots.png", height = 1050, width = 975)
 ((vc_plot_nl / r_plot_nl) | leg) +
   plot_layout(widths = c(0.875, 0.175)) +
-  plot_annotation(tag_levels = list(c("A", "B"), "")) &
+  plot_annotation(tag_levels = list(c("a", "b"), "")) &
   theme(plot.tag = element_text(face = 'bold'))
 dev.off()
 
