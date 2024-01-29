@@ -3,6 +3,7 @@ library(tidyverse); library(rstan); library(shinystan); library(cowplot); librar
 options(mc.cores = parallel::detectCores())
 rstan_options(auto_write = TRUE)
 
+source(file = "read_data_function.R")
 source(file = "utils/functions_temp_only.R")
 
 # pooled model

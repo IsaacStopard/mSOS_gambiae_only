@@ -149,3 +149,115 @@ integrate(EIP_surv_fun, lower = 0, upper = 10)
 
 pgamma(seq(0, 10, 0.1), 40, 4) * (1 - pexp(seq(0, 10, 0.1) * 0.1))
 
+fit_g <- function(t, df = df_s){
+  df <- subset(df, temp == t)
+  g_fit <- fitdistrplus::fitdist(data = df$gono_length,
+                        distr = "gamma")$estimate
+  e_fit <- fitdistrplus::fitdist(data = df$gono_length,
+                        distr = "exp")$estimate
+  
+  data.frame(gono_length = seq(0, 8, 0.1)) %>% 
+    mutate(gamma = dgamma(gono_length, shape = g_fit[1], rate = g_fit[2]),
+           exp = dexp(gono_length, rate = e_fit[1]),
+           temp = t)
+}
+
+pred_g <- lapply(unique(df_s$temp),
+       fit_g) %>% bind_rows()
+
+fit <- glm(gono_length ~ temp + clutch, data = df_s)
+
+exp(summary(fit)$coef[-1,"Estimate"] + 1.96 * summary(fit)$coef[-1,"Std. Error"])
+
+binwidth <- 20
+
+(ggplot(data = subset(df_s, temp == 21), aes(x = gono_length)) + 
+  geom_histogram(aes(y= after_stat(count)/sum(after_stat(count))), bins = binwidth) +
+  geom_line(data = subset(pred_g, temp == 21),
+            aes(x = gono_length, 
+                y = gamma),
+            col = "skyblue",
+            linewidth = 1) +
+    geom_line(data = subset(pred_g, temp == 21),
+              aes(x = gono_length, 
+                  y = exp),
+              col = "black",
+              linewidth = 1) +
+  facet_wrap(~temp) +
+    
+    ggplot(data = subset(df_s, temp == 24), aes(x = gono_length)) + 
+    geom_histogram(aes(y= after_stat(count)/sum(after_stat(count))), bins = binwidth) +
+    geom_line(data = subset(pred_g, temp == 24),
+              aes(x = gono_length, 
+                  y = gamma),
+              col = "skyblue",
+              linewidth = 1) +
+    geom_line(data = subset(pred_g, temp == 24),
+              aes(x = gono_length, 
+                  y = exp),
+              col = "black",
+              linewidth = 1) +
+    facet_wrap(~temp) +
+    
+    ggplot(data = subset(df_s, temp == 27), aes(x = gono_length)) + 
+    geom_histogram(aes(y= after_stat(count)/sum(after_stat(count))), bins = binwidth) +
+    geom_line(data = subset(pred_g, temp == 27),
+              aes(x = gono_length, 
+                  y = gamma),
+              col = "skyblue",
+              linewidth = 1) +
+    geom_line(data = subset(pred_g, temp == 27),
+              aes(x = gono_length, 
+                  y = exp),
+              col = "black",
+              linewidth = 1) +
+    facet_wrap(~temp) +
+    
+    ggplot(data = subset(df_s, temp == 30), aes(x = gono_length)) + 
+    geom_histogram(aes(y= after_stat(count)/sum(after_stat(count))), bins = binwidth) +
+    geom_line(data = subset(pred_g, temp == 30),
+              aes(x = gono_length, 
+                  y = gamma),
+              col = "skyblue",
+              linewidth = 1) +
+    geom_line(data = subset(pred_g, temp == 30),
+              aes(x = gono_length, 
+                  y = exp),
+              col = "black",
+              linewidth = 1) +
+    facet_wrap(~temp) +
+    
+    ggplot(data = subset(df_s, temp == 32), aes(x = gono_length)) + 
+    geom_histogram(aes(y= after_stat(count)/sum(after_stat(count))), bins = binwidth) +
+    geom_line(data = subset(pred_g, temp == 32),
+              aes(x = gono_length, 
+                  y = gamma),
+              col = "skyblue",
+              linewidth = 1) +
+    geom_line(data = subset(pred_g, temp == 32),
+              aes(x = gono_length, 
+                  y = exp),
+              col = "black",
+              linewidth = 1) +
+    facet_wrap(~temp) +
+    
+    ggplot(data = subset(df_s, temp == 34), aes(x = gono_length)) + 
+    geom_histogram(aes(y= after_stat(count)/sum(after_stat(count))), bins = binwidth) +
+    geom_line(data = subset(pred_g, temp == 34),
+              aes(x = gono_length, 
+                  y = gamma),
+              col = "skyblue",
+              linewidth = 1) +
+    geom_line(data = subset(pred_g, temp == 34),
+              aes(x = gono_length, 
+                  y = exp),
+              col = "black",
+              linewidth = 1) +
+    facet_wrap(~temp))
+
+
+EHT <- EHT %>% mutate(dead = bf_dead + gravid_dead + unf_dead,
+               live = bf_live + gravid_live + unf_live)    
+
+
+

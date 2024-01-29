@@ -8,7 +8,7 @@ options(mc.cores = parallel::detectCores())
 rstan_options(auto_write = TRUE)
 
 # functions and data that are used in multiple files
-source(file = "utils/functions_temp_only.R")
+source(file = "read_data_function.R")
 source(file = "utils/plotting_functions_temp_only.R")
 
 # changing the default ggplot theme
@@ -277,7 +277,7 @@ plot_df <- rbind(cbind(gen_quantiles(EIP_index$EIP_10, temps), data.frame("EIP" 
 
 write.csv(plot_df, file = "results_temp/temp_model_EIP_values.csv")
 
-# calculating the probability the degree day model EIP is > than EIP50
+# calculating the probability the degree day model EIP is > than EIP50 using the posterior values
 p_EIP_50_df <- data.frame(temp = temps,
                           p_EIP50 = sapply(seq(1, length(temps)), function(i, EIP_index, temps){
                             sum(EIP_index$EIP_50[,i] < 111/(temps[i] - 16))/length(EIP_index$EIP_50[,i])
