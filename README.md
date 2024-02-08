@@ -7,23 +7,31 @@ Last updated: 08/09/2023
 
 **Stan models**
 
-1️⃣ mSOS_multi_8.stan - implements the pooled model in Stan. Note to reduce computational time the likelihood for each unique combination of datapoint values is only calculated once.
+1️ mSOS_multi_8.stan - implements the pooled model in Stan. Note to reduce computational time the likelihood for each unique combination of datapoint values is only calculated once.
 
-2️⃣ mSOS_multi - implements the independent model fits.
+2️ mSOS_multi - implements the independent model fits.
 
 **Running**
 
-1️⃣ run_model_multi_temp_only.R - provides R code to run the Stan models
+1️ run_model_multi_temp_only.R - provides R code to run the Stan models.
+
+2  vectorial_capacity_cluster.R - runs the vectorial capacity calculations. Will only work on the MRC Global Infectious Disease Analysis cluster.
+
+3  biting_rate.R - fits the Brière function to the gonotrophic cycle length data and plots the results.
 
 **Helper functions**
 
-1️⃣ plot_model_temp_only.R - plot the model fits and run some analyses
+1️ plot_model_temp_only.R - plot the model fits and run some analyses.
 
-2️⃣ functions_temp_only.R - consistent functions to load in and wrangle the data
+2️ functions_temp_only.R - consistent functions to load in and wrangle the data.
 
-3️⃣ plotting_functions_temp_only.R - functions to help plotting
+3️ plotting_functions_temp_only.R - functions to help plotting.
 
-4️⃣ wrangle_Eunho_new_data.R - wrangle the data into a format for R
+4️ wrangle_Eunho_new_data.R - wrangle the data into a format for R.
+
+5  read_data.R - reads data in the correct format for model fitting and plotting.
+
+6  VC_functions.R - functions required to calculate the expected number of infectious bites per infected mosquito.
 
 Notes
 
