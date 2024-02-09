@@ -3,8 +3,6 @@
 
 This GitHub repository provides all code necessary to run the analyses for this paper. We ran the model using R version 4.2.1 and Stan version 2.21.0.
 
-Last updated: 08/09/2023
-
 **Stan models**
 
 :one: mSOS_multi_8.stan - implements the pooled model in Stan. Note to reduce computational time the likelihood for each unique combination of datapoint values is only calculated once.
