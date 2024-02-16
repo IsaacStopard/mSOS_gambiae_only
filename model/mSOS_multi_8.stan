@@ -1,4 +1,4 @@
-// mSOS: a multiscale stochastic model of sporogony - single temperature model
+// mSOS: a multiscale stochastic model of sporogony - pooled model
 // Author: Isaac J Stopard
 // Version: 0.01 
 // Last updated: 03/12/2020
@@ -233,20 +233,6 @@ model{
  
   k ~ lognormal(1, 0.75);
   
-
-  // need summary that compares the priors and the posteriors
-  // can summarise - calculate the Kullback-Leibler divergence between the prior and the posterior
-  // change the confidence intervals shown in the raw oocyst number data 
-  // so it is more comparable to the mean
-  // Kullback-Leibler divergence: need to write a function to calculate posterior density, 
-  // then integrate the function - look up what to integrate - log(posterior) * log(prior)
-  // helpful summary to gage how informative the priors are
-  // maybe set a different prior for mu
-  // do prior predictive distributions - for one value of temp / g combination
-  
-  // fix parameters to reasonable values and increase mu with increasing values
-  // plot the predicted prevalence and intensity with the different values that are near to failing
-  // 
   // likelihood
   target += (sum(S_likelihoods) + sum(O_intsy_likelihoods));
 }

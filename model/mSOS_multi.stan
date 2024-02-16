@@ -1,4 +1,4 @@
-// mSOS: a multiscale stochastic model of sporogony - single temperature model
+// mSOS: a multiscale stochastic model of sporogony - independent model
 // Author: Isaac J Stopard
 // Version: 0.01 
 // Last updated: 03/12/2020
@@ -159,9 +159,9 @@ model{
     rate_O[i] ~ normal(rate_O_prior, 0.1);
     shape_S[i] ~ normal(17.9, 5.0); // normal(17.9, 4.0);
     rate_S[i] ~ normal(2.2, 5.0); // fix the rate or shape - set to the mean from the stephensi analysis
-    mu[i] ~ lognormal(3, 1);  // increasing the SD of these priors causes divergent iterations (3.0, 1.5) // normal(5, 2.0)
-    k[i] ~ normal(5.0, 4.0); //normal(5, 2.0)// try a lognormal prior for mu 
-    delta[i] ~ beta(2.5, 2.5); // use a beta prior // normal(0.5, 2.0)
+    mu[i] ~ lognormal(3, 1);  
+    k[i] ~ normal(5.0, 4.0); 
+    delta[i] ~ beta(2.5, 2.5); 
     delta_S[i] ~ beta(1.8, 0.5);
   }
  
