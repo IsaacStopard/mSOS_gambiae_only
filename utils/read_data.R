@@ -1,3 +1,7 @@
+# R script to read in the mosquito dissection data
+# Author: Isaac J Stopard
+# Version: 1.0.0
+
 ###########################
 ### reading in the data ###
 ###########################
@@ -25,6 +29,8 @@ s_data_in <- generate_prevalence_temp(all_data$sporozoite_data) %>% mutate(temp_
 o_data_in <- oocyst_intensity_indexing(all_data$oocyst_data)
   
 # values from previous model fitting to Anopheles stephensi data
+# https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1008658
+
 mean_temp <- 27.9032
 sd_temp <-  3.471223
 m_rate_O <- 1.44

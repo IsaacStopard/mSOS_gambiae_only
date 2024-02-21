@@ -1,8 +1,12 @@
-#################
-### functions ###
-#################
+# Helper functions to process the data and model results
+# Author: Isaac J Stopard
+# Version: 1.0.0 
 
-# function that stratifies by temperature and feed and calculates the prevalence
+##############################
+### functions for the data ###
+##############################
+
+# function that stratifies by temperature and feed and calculates the prevalence (note this is not used in these analyses)
 generate_prevalence <- function(data){
   totals <- unique(data[,c("DPI","index_temp", "temp", "index_g", "index_gt", "gametocytemia")])
   
@@ -30,7 +34,7 @@ generate_prevalence <- function(data){
   return(totals)
 }
 
-# function that stratifies by temperature and calculates the prevalence
+# function that stratifies by temperature and calculates the prevalence (this function is used)
 generate_prevalence_temp <- function(data){
   totals <- unique(data[,c("DPI","index_temp", "temp")])
   
@@ -68,6 +72,7 @@ oocyst_intensity_indexing_temp <- function(data){
   return(out)
 }
 
+# function creates the indexing for use when fitting the model
 temp_g_indexing <- function(M_data, S_data){
   
   # temperature indexing
@@ -128,6 +133,74 @@ oocyst_intensity_indexing <- function(data){
   return(out)
 }
 
+# summarising the raw data
+generate_oocyst_intensity_summary <- function(data){
+  out <- unique(data[,c("DPI", "index_temp")])
+  out$mean <- rep(NA, nrow(out))
+  out$median <- rep(NA, nrow(out))
+  out$lower <- rep(NA, nrow(out))
+  out$upper <- rep(NA, nrow(out))
+  
+  for(i in 1:nrow(out)){
+    placeholder <- subset(data, DPI == out[i,"DPI"] & index_temp == out[i, "index_temp"])
+    out[i, "mean"] <- mean(placeholder[,"Oocyst_number"])
+    out[i, "median"] <- quantile(placeholder[,"Oocyst_number"], 0.5)
+    out[i, "lower"] <- quantile(placeholder[,"Oocyst_number"], 0.025)
+    out[i, "upper"] <- quantile(placeholder[,"Oocyst_number"], 0.975)
+    l.model <- lm(Oocyst_number ~ 1, data = placeholder)
+    out[i, "lower_CI"] <- confint(l.model, level=0.95)[[1]]
+    out[i, "upper_CI"] <- confint(l.model, level=0.95)[[2]]
+  }
+  return(out)
+}
+
+##########################################################################
+##### functions that are used to wrangle the model fits for plotting #####
+##########################################################################
+
+### functions to calculate the EIP PDFs, CDFs, mean and variances for fitted parameter values ###
+# in all cases
+# t: time, a and b are the shape and rate parameters of the G-->S gamma distribution respectively, 
+# and mu and k are the mean and overdispersion parameters of the oocyst load negative binomial distribution 
+
+# calculates the EIP values from the stan model fit parameters
+get_EIP <- function(params, temps, iter){
+  shape_S <- as.data.frame(matrix(NA, nrow = iter, ncol = length(temps)))
+  rate_S <- as.data.frame(matrix(NA, nrow = iter, ncol = length(temps)))
+  mu <- as.data.frame(matrix(NA, nrow = iter, ncol = length(temps)))
+  
+  shape_O <- as.data.frame(replicate(length(temps), params$shape_O))
+  rate_O <- as.data.frame(replicate(length(temps), params$rate_O))
+  
+  k <- as.data.frame(replicate(length(temps), params$k))
+  
+  for(i in 1:length(temps)){
+    shape_S[,i] <- temps[i]^2 * params$a_shape_S + temps[i] * params$b_shape_S + params$c_shape_S
+    rate_S[,i] <- temps[i] * params$m_rate_S + params$c_rate_S
+    mu[,i] <- (1 / (1 + exp(-(temps[i]^2 * params$a_mu + temps[i] * params$b_mu + params$c_mu)))) * params$g_mu
+    #mu[,i] <- params$a_mu * exp(-((temps[i] - params$b_mu)^2 / (2 * params$c_mu)^2))
+  }
+  
+  mu_total_S <- (rate_O * shape_S + rate_S * shape_O) / (rate_O * rate_S)
+  sigma_sq_S  <- (rate_O^2 * shape_S + rate_S^2 * shape_O) / (rate_O^2 * rate_S^2)
+  shape_total_S <- mu_total_S^2 / sigma_sq_S;
+  rate_total_S <- mu_total_S / sigma_sq_S;
+  mean_total_S <- shape_total_S / rate_total_S
+  
+  EIP_10 <- as.data.frame(matrix(NA, nrow = iter, ncol = length(temps)))
+  EIP_50 <- as.data.frame(matrix(NA, nrow = iter, ncol = length(temps)))
+  EIP_90 <- as.data.frame(matrix(NA, nrow = iter, ncol = length(temps)))
+  
+  for(i in 1:length(temps)){
+    EIP_10[,i] <- Inv_EIP_CDF(shape_total_S[,i], rate_total_S[,i], mu[,i], k[,i], 0.1)
+    EIP_50[,i] <- Inv_EIP_CDF(shape_total_S[,i], rate_total_S[,i], mu[,i], k[,i], 0.5)
+    EIP_90[,i] <- Inv_EIP_CDF(shape_total_S[,i], rate_total_S[,i], mu[,i], k[,i], 0.9)
+  }
+  
+  return(list("shape_O" = shape_O, "rate_O" = rate_O, "shape_S" = shape_S, "rate_S" = rate_S, "shape_total_S" = shape_total_S, 
+              "rate_total_S" = rate_total_S, "mean_total_S" = mean_total_S, "EIP_10" = EIP_10, "EIP_50" = EIP_50, "EIP_90" = EIP_90,
+              "mu" = mu, "k" = k))
+}
 
 # function to calculate the mean EIP from the get_EIP function
 calc_mean_EIP <- function(EIP_index, i){
@@ -143,6 +216,7 @@ calc_mean_EIP <- function(EIP_index, i){
            "n_na" = sum(is.na(p$mean))))
 }
 
+# function to calculate the EIP distribution variance from the model fits
 calc_var_mean_i_EIP <- function(EIP_index, i){
   m <- data.frame("a" = EIP_index$shape_total_S[,i],
                   "b" = EIP_index$rate_total_S[,i],
@@ -250,6 +324,103 @@ Inv_EIP_CDF <- function(a, b, mu, k, p){
   return((zipfR::Rgamma.inv(a, one, lower = TRUE)/b))
 }
 
+gen_quantiles <- function(df, temps){
+  out <- as.data.frame(matrix(NA, nrow = length(temps), ncol = 5))
+  
+  for(i in 1:length(temps)){
+    out[i,] <- c(temps[i], quantile(df[,i], c(0.025, 0.5, 0.975)), mean(df[,i]))
+  }
+  colnames(out) <- c("temp", "lower", "median", "upper", "mean")
+  return(out)
+}
+
+get_EIP_params_temp <- function(temp, params){
+  out <- data.frame(
+    "shape_S" = temp^2 * params$a_shape_S + temp * params$b_shape_S + params$c_shape_S,
+    "rate_S" = temp * params$m_rate_S + params$c_rate_S,
+    "mu" = (1/(1+exp(-(params$a_mu * temp^2 + 
+                         params$b_mu * temp + params$c_mu)))) * params$g_mu,
+    "k" = params$k,
+    "shape_O" = params$shape_O,
+    "rate_O" = params$rate_O
+  ) %>% mutate(
+    mu_total_S = (rate_O * shape_S + rate_S * shape_O) / (rate_O * rate_S),
+    sigma_sq_S  = (rate_O^2 * shape_S + rate_S^2 * shape_O) / (rate_O^2 * rate_S^2),
+    shape_total_S = mu_total_S^2 / sigma_sq_S,
+    rate_total_S = mu_total_S / sigma_sq_S,
+    mean_total_S = shape_total_S / rate_total_S,
+  )
+  return(out)
+}
+
+calc_PDF <- function(p_x, t_ = t){
+  
+  g_PDF <- as.data.frame(t(mapply(EIP_PDF, 
+                                  a = as.list(p_x[, "shape_total_S"]),
+                                  b = as.list(p_x[, "rate_total_S"]),
+                                  mu = as.list(p_x[, "mu"]),
+                                  k = as.list(p_x[, "k"]),
+                                  MoreArgs = list(t = t_)))) # %>% mutate(t = seq(0, 30, 0.1)) 
+  
+  return(data.frame("t" = t_, 
+                    "mean" = sapply(g_PDF, mean),
+                    "median" = sapply(g_PDF, median),
+                    "lower" = sapply(g_PDF, quantile, probs = c(0.025)),
+                    "upper" = sapply(g_PDF, quantile, probs = c(0.975))))
+}
+
+# function to estimate the EIP percentiles whilst accounting for uncertainty in the parameter estimates
+calc_EIP_v <- function(EIP_index, temps, n_iter){
+  
+  set.seed(12345)
+  x <- runif(n_iter)
+  n_temp <- length(temps)
+  
+  shape_total_S <- EIP_index$shape_total_S
+  rate_total_S <- EIP_index$rate_total_S
+  mu <- EIP_index$mu
+  k <- EIP_index$k
+  
+  out <- bind_rows(
+    lapply(seq(1, n_temp),
+           function(j, n_iter, temp, shape_total_S, rate_total_S, mu, k, x){
+             print(temp[j])
+             EIP <- lapply(seq(1, n_iter), 
+                           function(i, j, temp, shape_total_S, rate_total_S, mu, k, x){
+                             Inv_EIP_CDF(shape_total_S[i, j], rate_total_S[i, j], mu[i, j], k[i, j], x)
+                           }, 
+                           j = j,
+                           temp = temp,
+                           shape_total_S = shape_total_S, 
+                           rate_total_S = rate_total_S, 
+                           mu = mu, 
+                           k = k, 
+                           x = x)
+             EIP <- unlist(EIP)
+             out_i <- data.frame("EIP_50" = quantile(EIP, probs = c(0.5))[[1]],
+                                 "EIP_10" = quantile(EIP, probs = c(0.1))[[1]],
+                                 "EIP_90" = quantile(EIP, probs = c(0.9))[[1]],
+                                 "mean" = mean(EIP),
+                                 "temp" = temps[j])
+             rm(list = c("EIP"))
+             return(out_i)},
+           
+           n_iter = n_iter,
+           temp = temps,
+           shape_total_S = shape_total_S, 
+           rate_total_S = rate_total_S, 
+           mu = mu, 
+           k = k, 
+           x = x
+    ))
+  
+  return(out)   
+}
+
+###############################################################################################
+##### calculate the posterior uncertainty for generated quantities in the stan model fits #####
+###############################################################################################
+
 prop_ppd_function <- function(fit_df, n_unq_gt, length_ppd_times, PPD_times, iterations, warmup, chains, Stan_data_name){
   prop_ppd <- array(NaN, c(length_ppd_times, ((iterations - warmup) * chains), n_unq_gt))
   for(i in 1:length_ppd_times){
@@ -283,77 +454,9 @@ prop_ppd_function <- function(fit_df, n_unq_gt, length_ppd_times, PPD_times, ite
   return(prop_quantile_ppd_df)
 }
 
-generate_oocyst_intensity_summary <- function(data){
-  out <- unique(data[,c("DPI", "index_temp")])
-  out$mean <- rep(NA, nrow(out))
-  out$median <- rep(NA, nrow(out))
-  out$lower <- rep(NA, nrow(out))
-  out$upper <- rep(NA, nrow(out))
-  
-  for(i in 1:nrow(out)){
-    placeholder <- subset(data, DPI == out[i,"DPI"] & index_temp == out[i, "index_temp"])
-    out[i, "mean"] <- mean(placeholder[,"Oocyst_number"])
-    out[i, "median"] <- quantile(placeholder[,"Oocyst_number"], 0.5)
-    out[i, "lower"] <- quantile(placeholder[,"Oocyst_number"], 0.025)
-    out[i, "upper"] <- quantile(placeholder[,"Oocyst_number"], 0.975)
-    l.model <- lm(Oocyst_number ~ 1, data = placeholder)
-    out[i, "lower_CI"] <- confint(l.model, level=0.95)[[1]]
-    out[i, "upper_CI"] <- confint(l.model, level=0.95)[[2]]
-  }
-  return(out)
-}
-
 run_prop_ppd_df <- function(fit, model, Stan_data_name, length_ppd_times, PPD_times){
   df <- prop_ppd_function(as.data.frame(fit),length(all_data$unique_temp), length_ppd_times, PPD_times, iterations, warmup, chains, Stan_data_name)
   df$model <- rep(model, nrow(df))
   df$temp <- all_data$unique_temp[df$index_gt]
   return(df)
-}
-
-get_EIP <- function(params, temps, iter){
-  shape_S <- as.data.frame(matrix(NA, nrow = iter, ncol = length(temps)))
-  rate_S <- as.data.frame(matrix(NA, nrow = iter, ncol = length(temps)))
-  mu <- as.data.frame(matrix(NA, nrow = iter, ncol = length(temps)))
-  
-  shape_O <- as.data.frame(replicate(length(temps), params$shape_O))
-  rate_O <- as.data.frame(replicate(length(temps), params$rate_O))
-  
-  k <- as.data.frame(replicate(length(temps), params$k))
-  
-  for(i in 1:length(temps)){
-    shape_S[,i] <- temps[i]^2 * params$a_shape_S + temps[i] * params$b_shape_S + params$c_shape_S
-    rate_S[,i] <- temps[i] * params$m_rate_S + params$c_rate_S
-    mu[,i] <- (1 / (1 + exp(-(temps[i]^2 * params$a_mu + temps[i] * params$b_mu + params$c_mu)))) * params$g_mu
-    #mu[,i] <- params$a_mu * exp(-((temps[i] - params$b_mu)^2 / (2 * params$c_mu)^2))
-  }
-  
-  mu_total_S <- (rate_O * shape_S + rate_S * shape_O) / (rate_O * rate_S)
-  sigma_sq_S  <- (rate_O^2 * shape_S + rate_S^2 * shape_O) / (rate_O^2 * rate_S^2)
-  shape_total_S <- mu_total_S^2 / sigma_sq_S;
-  rate_total_S <- mu_total_S / sigma_sq_S;
-  mean_total_S <- shape_total_S / rate_total_S
-  
-  EIP_10 <- as.data.frame(matrix(NA, nrow = iter, ncol = length(temps)))
-  EIP_50 <- as.data.frame(matrix(NA, nrow = iter, ncol = length(temps)))
-  EIP_90 <- as.data.frame(matrix(NA, nrow = iter, ncol = length(temps)))
-  
-  for(i in 1:length(temps)){
-    EIP_10[,i] <- Inv_EIP_CDF(shape_total_S[,i], rate_total_S[,i], mu[,i], k[,i], 0.1)
-    EIP_50[,i] <- Inv_EIP_CDF(shape_total_S[,i], rate_total_S[,i], mu[,i], k[,i], 0.5)
-    EIP_90[,i] <- Inv_EIP_CDF(shape_total_S[,i], rate_total_S[,i], mu[,i], k[,i], 0.9)
-  }
-  
-  return(list("shape_O" = shape_O, "rate_O" = rate_O, "shape_S" = shape_S, "rate_S" = rate_S, "shape_total_S" = shape_total_S, 
-              "rate_total_S" = rate_total_S, "mean_total_S" = mean_total_S, "EIP_10" = EIP_10, "EIP_50" = EIP_50, "EIP_90" = EIP_90,
-              "mu" = mu, "k" = k))
-}
-
-gen_quantiles <- function(df, temps){
-  out <- as.data.frame(matrix(NA, nrow = length(temps), ncol = 5))
-  
-  for(i in 1:length(temps)){
-    out[i,] <- c(temps[i], quantile(df[,i], c(0.025, 0.5, 0.975)), mean(df[,i]))
-  }
-  colnames(out) <- c("temp", "lower", "median", "upper", "mean")
-  return(out)
 }

@@ -1,5 +1,8 @@
-# estimating the temp-dependent vectorial capacity
-# degree-day model and mSOS model comparison
+# R script to process the parameters for the individual vectorial capacity estimates and plotting the results
+# Author: Isaac J Stopard
+# Version: 1.0.0
+# Notes: # estimating the temp-dependent vectorial capacity with degree-day model and mSOS model comparison
+
 rm(list = ls())
 library(tidyverse);
 library(cowplot); library(zipfR);
@@ -16,18 +19,17 @@ theme_set(theme_bw() +
 ##### functions #####
 #####################
 
-source(file = "utils/functions_temp_only.R")
-source(file = "utils/plotting_functions_temp_only.R")
+source(file = "utils/read_data.R")
 source(file = "utils/VC_functions.R")
 
 ###########################
 ### reading in the data ###
 ###########################
 
-source(file = "read_data.R")
-
+# EIP Stan fits
 fit_temp <- readRDS("fits/fit_mSOS_temp_only_f2_f3.rds")
 
+# biting rate Stan fits
 fit_br <- readRDS("fits/biting_rate_fit.rds")
 
 params_temp <- rstan::extract(fit_temp)
@@ -94,7 +96,7 @@ extract_params <- function(i, params_df, params_temp, params_br, n_s){
 params_df_cluster <- lapply(seq(1, nrow(params_df)), extract_params, params_df = params_df, params_temp = params_temp, params_br = params_br, n_s = 100) %>% bind_rows()
 
 n <- nrow(params_df_cluster)
-a0 <- seq(0, 20, 1)
+a0 <- seq(0, 15, 1)
 
 params_df_cluster <- params_df_cluster %>% slice(rep(1:n(), each = length(a0))) %>% mutate(a0 =rep(a0, n))
 
@@ -106,63 +108,17 @@ params_df_cluster <- params_df_cluster %>% rename(shape = shape_total_S,
                                   EIP = EIP_DD)
 
 saveRDS(params_df_cluster, file = "/Volumes/ijs11/mSOS_gambiae_only/params_df.rds")
+saveRDS(params_df_cluster, file = "fits/params_df.rds")
 
 
 #################################################################################
 ##### calculating for vectorial capacity for the median parameter estimates #####
 #################################################################################
 
-# mean_biting_rate <- read.csv(file = "biting_rate_estimates.csv")
-# 
-# params_df <- rbind(data.frame(location = c("Kericho", "Kitale", "Kisumu", "Garissa"),
-#                               "recent" = c(17.5, 19, 23.4, 28.8),
-#                               "future" = c(19.5, 20.9, 25.2, 30)) %>% pivot_longer(cols = c("recent", "future"),
-#                                                                                    names_to = "temp_source",
-#                                                                                    values_to = "temp") %>%
-#                      mutate(scaled_temp = (temp - all_data$m_temp) / all_data$sd_temp,
-#                             g1 = quadratic_function(t = temp, a = 0.000233, b = -0.0101, c = 0.118),
-#                             g2 = 0.00809 * temp - 0.111, feed = "feed_1"),
-#                    data.frame(location = c("Kericho", "Kitale", "Kisumu", "Garissa"),
-#                               "recent" = c(17.5, 19, 23.4, 28.8),
-#                               "future" = c(19.5, 20.9, 25.2, 30)) %>% pivot_longer(cols = c("recent", "future"),
-#                                                                                    names_to = "temp_source",
-#                                                                                    values_to = "temp") %>% mutate(
-#                                                                                      scaled_temp = (temp - all_data$m_temp) / all_data$sd_temp,
-#                                                                                      g1 = quadratic_function(t = temp,
-#                                                                                                              a = 0.00005632, b = -0.00244, c = 0.028),
-#                                                                                      g2 = 0.00851 * temp - 0.0916, feed = "feed_2"))
-# 
-# params_df[,"alpha"] <- mean_biting_rate[match(params_df$temp, mean_biting_rate$temp), "med"]
-# 
-# # params_df %>% rowwise() %>% mutate(max_a0 = round(uniroot(
-# #   function(x){surv_gomp(a0 = 0, a = x, g1 = g1, g2 = g2) - 0.25},  lower = 0, upper = 250)[[1]], digits = 0))
-# 
-# extract_params <- function(scaled_temp, params_temp){
-#   shape_S <- quadratic_function(scaled_temp, params_temp$a_shape_S, params_temp$b_shape_S, params_temp$c_shape_S)
-#   rate_S <- scaled_temp * params_temp$m_rate_S + params_temp$c_rate_S
-#   shape_O <- params_temp$shape_O
-#   rate_O <- params_temp$rate_O
-#   mu_total_S <- (rate_O * shape_S + rate_S * shape_O) / (rate_O * rate_S)
-#   sigma_sq_S <- (rate_O^2 * shape_S + rate_S^2 * shape_O) / (rate_O^2 * rate_S^2)
-#   shape_total_S <- mu_total_S^2 / sigma_sq_S
-#   rate_total_S <- mu_total_S / sigma_sq_S
-#   mu <- logistic_function(quadratic_function(scaled_temp, params_temp$a_mu, params_temp$b_mu, params_temp$c_mu)) * params_temp$g_mu
-#   k <- params_temp$k
-# 
-#   return(data.frame(shape_total_S = median(shape_total_S),
-#                     rate_total_S = median(rate_total_S),
-#                     mu = median(mu),
-#                     k = median(k)))
-# }
-# 
-# params_df <- cbind(params_df, lapply(params_df$scaled_temp, extract_params, params_temp = params_temp) %>% bind_rows %>% as.data.frame())
-# 
-# n <- nrow(params_df)
-# a0 <- seq(0, 20, 1)
-# 
-# params_df <- params_df %>% slice(rep(1:n(), each = length(a0))) %>% mutate(a0 =rep(a0, n))
-# 
-# params_df <- params_df %>% mutate(E_j_a0 = v_E_j_bites_a0(a0 = a0,
+
+# the vectorial capacity was calculated on the MRC Centre cluster, which requires access.
+# run locally use:
+# params_df <- params_df_cluster %>% mutate(E_j_a0 = v_E_j_bites_a0(a0 = a0,
 #                                                           alpha = alpha,
 #                                                           g1 = g1,
 #                                                           g2 = g2,
@@ -181,57 +137,6 @@ saveRDS(params_df_cluster, file = "/Volumes/ijs11/mSOS_gambiae_only/params_df.rd
 # 
 # 
 # check_df <- params_df[1,]
-# 
-# s_time <- Sys.time()
-# v_prop_surv_gomp(a0 = check_df$a0,
-#                g1 = check_df$g1,
-#                g2 = check_df$g2,
-#                shape = check_df$shape,
-#                rate = check_df$rate,
-#                mu_PL = check_df$mu_PL,
-#                k = check_df$k
-#                )
-# e_time <- Sys.time()
-# e_time - s_time
-# 
-# s_time <- Sys.time()
-# v_p_j_bites_EIP_a1(#a2 = rep(10, nrow(check_df)),
-#                      j = rep(3, nrow(check_df)),
-#                      alpha = check_df$alpha,
-#                      a1 = rep(4, nrow(check_df)),
-#                      g1 = check_df$g1,
-#                      g2 = check_df$g2
-#                      )
-# e_time <- Sys.time()
-# e_time - s_time
-# 
-# s_time <- Sys.time()
-# v_E_j_bites_a0(a0 = check_df$a0, # age the mosquito exits the EIP
-#                    alpha = check_df$alpha, # Poisson distribution rate
-#                    g1 = check_df$g1,
-#                    g2 = check_df$g2,
-#                    shape = check_df$shape,
-#                    rate = check_df$rate,
-#                    mu_PL = check_df$mu_PL,
-#                    k = check_df$k
-#   )
-# e_time <- Sys.time()
-# e_time - s_time
-# 
-# proc.time(check <- params_df[1,] %>% mutate(E_j_a0 = E_j_bites_a0(a0 = a0,
-#                                                           alpha = alpha,
-#                                                           g1 = g1,
-#                                                           g2 = g2,
-#                                                           shape = shape_total_S,
-#                                                           rate = rate_total_S,
-#                                                           mu_PL = mu,
-#                                                           k = k),
-#                                  E_j_a0_fixed = E_j_bites_a0_fixed(a0 = a0,
-#                                                                       alpha = alpha,
-#                                                                       g1 = g1,
-#                                                                       g2 = g2,
-#                                                                       EIP = EIP_DD)))
-# 
 # 
 # saveRDS(params_df, file = "params_df_E_j_bites_a0.rds")
 # 
@@ -264,11 +169,6 @@ pars_sum$E_j_a0_fixed <- paste0(round(pars_sum$med_dd, digits = 2)," (",round(pa
 
 pars_sum_0 <- subset(pars_sum, a0 == 0)
 
-view(pars_sum_0[order(pars_sum_0$feed, pars_sum_0$temp_source, pars_sum_0$location),])
-
-view(pars)
-
-
 relative_E_j_a0_all <- left_join(
   subset(pars, temp_source == "recent")[,c("location", "feed", "a0", "i_pdf", "i_br", "E_j_a0", "E_j_dd")] %>% rename(r_E_j_a0 = E_j_a0, r_E_j_dd = E_j_dd),
   
@@ -288,9 +188,11 @@ relative_E_j_a0 <- relative_E_j_a0_all %>% group_by(location, a0, feed) %>%
 relative_E_j_a0 <- rbind(relative_E_j_a0[,c("location", "feed", "a0", "med", "low", "up")] %>% mutate(model = "Suh-Stopard"),
                          relative_E_j_a0[,c("location", "feed", "a0", "med_dd", "low_dd", "up_dd")] %>% rename(med = med_dd, low = low_dd, up = up_dd) %>% mutate(model = "Degree-day"))
 
+# viewing the results
 subset(relative_E_j_a0, a0 == 0) %>% 
   mutate(result = paste0(round(med, digits = 2), " (", round(low, digits = 2), " – ", round(up, digits = 2),")"))
 
+# changing the order of the locations
 relative_E_j_a0$location <- factor(relative_E_j_a0$location, levels = c("Kericho", "Kitale", "Kisumu", "Garissa"))
 
 # rbind(params_df %>% dplyr::select("location", "temp_source", "feed", "a0", "E_j_a0") %>% tidyr::pivot_wider(names_from = temp_source,
@@ -359,6 +261,7 @@ png(file = "results_temp/VC_plots.png", height = 1050, width = 975)
   theme(plot.tag = element_text(face = 'bold'))
 dev.off()
 
+# checking the values
 cbind(subset(params_df, a0 == 0 & temp_source == "recent" & feed == "feed_1")$E_j_a0 %>% round(digits = 2),
            subset(params_df, a0 == 0 & temp_source == "recent" & feed == "feed_1")$E_j_a0_fixed %>% round(digits = 2),
            subset(params_df, a0 == 0 & temp_source == "recent" & feed == "feed_2")$E_j_a0 %>% round(digits = 2),
@@ -368,125 +271,6 @@ cbind(subset(relative_E_j_a0, feed == "feed_1" & model == "EIP_dist" & a0 == 0)$
       subset(relative_E_j_a0, feed == "feed_1" & model == "degree_day" & a0 == 0)$ratio %>% round(digits = 2),
       subset(relative_E_j_a0, feed == "feed_2" & model == "EIP_dist" & a0 == 0)$ratio %>% round(digits = 2), 
       subset(relative_E_j_a0, feed == "feed_2" & model == "degree_day" & a0 == 0)$ratio %>% round(digits = 2)) %>% view()
-
-
-# Assuming mosquito survival is exponentially distributed
-# survival was assumed to follow Marten's models
-
-prop_surv <- function(t, mu, shape, rate, mu_PL, k){
-  return(exp(-mu * t) * EIP_PDF(t, a = shape, b = rate, mu = mu_PL, k = k))
-}
-
-prop_surv_int <- function(mu, shape, rate, mu_PL, k){
-  out <- tryCatch(
-    {stats::integrate(prop_surv, lower = 0, upper = Inf, mu = mu, shape = shape, rate = rate, mu_PL = mu_PL, k = k,
-                      rel.tol = 1e-15)[[1]]},
-    error=function(cond){return(NA)}
-    )
-  return(out)
-}
-
-v.prop_surv_int <- Vectorize(prop_surv_int)
-
-# survival function models
-martens_1 <- function(T){
-  return(-0.0016*T^2 + 0.054*T+0.45)
-}
-
-martens_2 <- function(T){
-  return(exp(-(1/(-4.4 + 1.31*T - 0.03*T^2))))
-}
-
-theme_set(theme_bw() + 
-            theme(panel.grid.major = element_blank(), 
-                  panel.grid.minor = element_blank(),
-                  text = element_text(size = 18)))
-
-# EIP model
-s_data <- read.csv(file = "data/processed/ES_new_constant_temp_spz_processed.csv")
-o_data <- read.csv(file = "data/processed/ES_new_constant_temp_oocyst_processed.csv")
-
-s_data <- s_data[,c(2:ncol(s_data))]
-s_data$index_ref <- rep(1, nrow(s_data))
-s_data$gametocytemia <- round(s_data$gametocytemia, digits = 5)
-
-# wrangling the oocyst data
-o_data <- o_data[,c(2:ncol(o_data))]
-o_data$gametocytemia <- round(o_data$gametocytemia, digits = 5)
-o_data$index_ref <- rep(1, nrow(o_data))
-
-s_data <- s_data[-which(s_data$temp == 17 & s_data$gametocytemia == 0.00024),]
-o_data <- o_data[-which(o_data$temp == 17 & o_data$gametocytemia == 0.00024),]
-
-all_data <- temp_g_indexing(o_data, s_data)
-
-temps <- seq(17, 30, 0.1)
-scaled_temps <- (temps - all_data$m_temp) / all_data$sd_temp
-
-fit_temp <- readRDS("fits/fit_mSOS_temp_only_f2_f3.rds")
-# for all temperatures
-# pooled model estimates
-params_temp <- rstan::extract(fit_temp)
-
-EIP_index <- get_EIP(params_temp, scaled_temps, 10000)
-
-# calculating the proportion surviving the EIP
-params_df <- data.frame(temp = temps) %>% mutate(M1 = (1 - martens_1(temp)),
-                                            M2 = (1 - martens_2(temp)),
-                                            degree_day = 111 / (temp - 16)) %>% 
-  mutate(p_s_dd = exp(- M2 * degree_day))
-
-ggplot(data = params_df) +
-  geom_line(aes(x = temp, y = M1)) +
-  geom_line(aes(x = temp, y = M2), col = "skyblue")
-
-# calculating the probability of surviving the EIP
-cl <- makeCluster(3)
-registerDoParallel(cl)
-clusterExport(cl = cl, varlist = c("params_df", "EIP_index", "prop_surv", "EIP_PDF", "v.prop_surv_int", "prop_surv_int"))
-all_p_s <- foreach(i=1:nrow(params_df),
-                   .packages = (.packages())) %dopar% 
-  {
-    v.prop_surv_int(mu = params_df[i, "M2"], 
-                    shape = EIP_index$shape_total_S[,i],
-                    rate = EIP_index$rate_total_S[,i],
-                    mu_PL = EIP_index$mu[,i],
-                    k = EIP_index$k[,i])
-   
-}
-stopCluster(cl)
-
-model_M2 <- bind_rows(lapply(seq(1, length(all_p_s)), function(i, all_p_s){
-  if(sum(is.na(all_p_s[[i]]))<10){
-    return(quantile(all_p_s[[i]], probs = c(0.025, 0.5, 0.975), na.rm = TRUE))
-  } else{
-    return(NA)
-  }
-}, all_p_s = all_p_s)) %>% as.data.frame()
-
-plot_grid(
-  ggplot(data = cbind(params_df, model_M2)) + 
-  geom_line(aes(x = temp, y = p_s_dd), linewidth = 1) +
-  geom_line(aes(x = temp, y = `50%`), linewidth = 1, col = "skyblue") +
-  ylab("Probability of surviving the EIP"),
-  
-  ggplot(data = cbind(params_df, model_M2)) + 
-  geom_line(aes(x = temp, y = `50%`/p_s_dd), linewidth = 1) +
-  ylab("Ratio of probability of surviving the mSOS EIP\nestimate compared to degree day model estimate") +
-    scale_y_log10(),
-  
-  labels = c("A", "B")
-)
-
-
-
-
-
-
-
-
-
-
 
 
 

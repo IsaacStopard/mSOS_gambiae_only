@@ -1,25 +1,23 @@
+# R script to fit Brière function to individual mosquito gonotrophic cycle length data
+# Author: Isaac J Stopard
+# Version: 1.0.0
+
+rm(list = ls())
 library(readxl); library(tidyverse); library(rstan);
 
+######################################################
+###### read in the gonotrophic cycle length data #####
+######################################################
+
+# Shapiro et al, 2017. Quantifying the effects of temperature on mosquito and parasite traits that determine the transmission potential of human malaria. PLoS biology, 15(10), p.e2003489.
 df <- readxl::read_excel("data/doi_10.5061_dryad.74839_shapiro/PLoS.Biology.DataFigures.Supplemental.xlsx",
                    sheet = "Fig4.Raw.Data")
 
 df_long <- df %>% tidyr::pivot_longer(cols = c("clutch.1", "clutch.2"), names_to = "clutch", values_to =  "gono_length")
 
-# checking if there is correlation between the clutches of the same mosquito
-ggplot(data = df %>% tidyr::pivot_longer(cols = c("clutch.1", "clutch.2"), names_to = "clutch", values_to =  "gono_length"),
-       aes(x = clutch, y = gono_length, col = id, group = factor(id))) +
-  geom_point() +
-  geom_line() +
-  facet_wrap(~temp)
-
-ggplot(data = df %>% tidyr::pivot_longer(cols = c("clutch.1", "clutch.2"), 
-                                         names_to = "clutch", values_to =  "gono_length"),
-       aes(x = id, y = gono_length, group = factor(clutch))) +
-  geom_point() +
-  facet_wrap(~temp) +
-  geom_smooth(method = "lm")
-
-df %>% group_by(temp) %>% summarise(sum(is.na(clutch.2)))
+######################
+##### Stan model #####
+######################
 
 Briere_model <- "
 data{
@@ -70,23 +68,26 @@ vector[n_pred_temp] Briere_out;
 }
 
 "
-stanDso_in <- stan_model(model_code = Briere_model) 
 
-df_s <- na.omit(df_long)
+stanDso_in <- stan_model(model_code = Briere_model) # compiling the model
 
+df_s <- na.omit(df_long) # remove gonotrophic cycle NAs (where the mosquito died so the second length was not recorded)
+
+# scaling the temperature
 mean_temp <- mean(df_s$temp)
 sd_temp <- sd(df_s$temp)
-
 df_s$scaled_temp <- (df_s$temp - mean_temp)/sd_temp
 
-pred_temp <- seq(0, 60, 0.1)
+pred_temp <- seq(0, 60, 0.1) # temperatures to predict the biting rate for
 
+# data to fit the model to
 data_in <- list(n = nrow(df_s),
                 temp = df_s$temp,
                 gono = as.integer(df_s$gono_length),
                 n_pred_temp = length(pred_temp),
                 pred_temp = pred_temp)
 
+# model initial starting values
 finit <- function(){
   list(a = 0.00001,
        T0 = 15,
@@ -94,6 +95,7 @@ finit <- function(){
   )
 }
 
+#fitting the model
 fit <- sampling(stanDso_in, 
                 data = data_in, 
                 iter = 2500, 
@@ -104,7 +106,12 @@ fit <- sampling(stanDso_in,
                                stepsize = 0.1)) 
 
 #saveRDS(fit, file = "fits/biting_rate_fit.rds")
-fit <- readRDS(file = "fits/biting_rate_fit.rds")
+
+###################################
+##### plotting the model fits #####
+###################################
+
+#fit <- readRDS(file = "fits/biting_rate_fit.rds")
 
 pred_vals <- rstan::extract(fit, "Briere_out")$Briere_out
 
@@ -135,129 +142,6 @@ ggplot(data = mean_biting_rate) +
   coord_cartesian(xlim = c(0, 50)) +
   scale_size_continuous(name = "Sample\nsize", range = c(2, 7)) 
 dev.off()
-  
-ggplot(data = na.omit(df_long),
-       aes(x = temp, y = 1/gono_length, group = factor(temp))) +
-  geom_boxplot()
-
-EIP_surv_fun <- function(t){
-  return(dgamma(t, 40, 4) * (1 - pexp(t * 0.1)))
-}
-
-# probability of surviving the EIP
-integrate(EIP_surv_fun, lower = 0, upper = 10)
-
-pgamma(seq(0, 10, 0.1), 40, 4) * (1 - pexp(seq(0, 10, 0.1) * 0.1))
-
-fit_g <- function(t, df = df_s){
-  df <- subset(df, temp == t)
-  g_fit <- fitdistrplus::fitdist(data = df$gono_length,
-                        distr = "gamma")$estimate
-  e_fit <- fitdistrplus::fitdist(data = df$gono_length,
-                        distr = "exp")$estimate
-  
-  data.frame(gono_length = seq(0, 8, 0.1)) %>% 
-    mutate(gamma = dgamma(gono_length, shape = g_fit[1], rate = g_fit[2]),
-           exp = dexp(gono_length, rate = e_fit[1]),
-           temp = t)
-}
-
-pred_g <- lapply(unique(df_s$temp),
-       fit_g) %>% bind_rows()
-
-fit <- glm(gono_length ~ temp + clutch, data = df_s)
-
-exp(summary(fit)$coef[-1,"Estimate"] + 1.96 * summary(fit)$coef[-1,"Std. Error"])
-
-binwidth <- 20
-
-(ggplot(data = subset(df_s, temp == 21), aes(x = gono_length)) + 
-  geom_histogram(aes(y= after_stat(count)/sum(after_stat(count))), bins = binwidth) +
-  geom_line(data = subset(pred_g, temp == 21),
-            aes(x = gono_length, 
-                y = gamma),
-            col = "skyblue",
-            linewidth = 1) +
-    geom_line(data = subset(pred_g, temp == 21),
-              aes(x = gono_length, 
-                  y = exp),
-              col = "black",
-              linewidth = 1) +
-  facet_wrap(~temp) +
-    
-    ggplot(data = subset(df_s, temp == 24), aes(x = gono_length)) + 
-    geom_histogram(aes(y= after_stat(count)/sum(after_stat(count))), bins = binwidth) +
-    geom_line(data = subset(pred_g, temp == 24),
-              aes(x = gono_length, 
-                  y = gamma),
-              col = "skyblue",
-              linewidth = 1) +
-    geom_line(data = subset(pred_g, temp == 24),
-              aes(x = gono_length, 
-                  y = exp),
-              col = "black",
-              linewidth = 1) +
-    facet_wrap(~temp) +
-    
-    ggplot(data = subset(df_s, temp == 27), aes(x = gono_length)) + 
-    geom_histogram(aes(y= after_stat(count)/sum(after_stat(count))), bins = binwidth) +
-    geom_line(data = subset(pred_g, temp == 27),
-              aes(x = gono_length, 
-                  y = gamma),
-              col = "skyblue",
-              linewidth = 1) +
-    geom_line(data = subset(pred_g, temp == 27),
-              aes(x = gono_length, 
-                  y = exp),
-              col = "black",
-              linewidth = 1) +
-    facet_wrap(~temp) +
-    
-    ggplot(data = subset(df_s, temp == 30), aes(x = gono_length)) + 
-    geom_histogram(aes(y= after_stat(count)/sum(after_stat(count))), bins = binwidth) +
-    geom_line(data = subset(pred_g, temp == 30),
-              aes(x = gono_length, 
-                  y = gamma),
-              col = "skyblue",
-              linewidth = 1) +
-    geom_line(data = subset(pred_g, temp == 30),
-              aes(x = gono_length, 
-                  y = exp),
-              col = "black",
-              linewidth = 1) +
-    facet_wrap(~temp) +
-    
-    ggplot(data = subset(df_s, temp == 32), aes(x = gono_length)) + 
-    geom_histogram(aes(y= after_stat(count)/sum(after_stat(count))), bins = binwidth) +
-    geom_line(data = subset(pred_g, temp == 32),
-              aes(x = gono_length, 
-                  y = gamma),
-              col = "skyblue",
-              linewidth = 1) +
-    geom_line(data = subset(pred_g, temp == 32),
-              aes(x = gono_length, 
-                  y = exp),
-              col = "black",
-              linewidth = 1) +
-    facet_wrap(~temp) +
-    
-    ggplot(data = subset(df_s, temp == 34), aes(x = gono_length)) + 
-    geom_histogram(aes(y= after_stat(count)/sum(after_stat(count))), bins = binwidth) +
-    geom_line(data = subset(pred_g, temp == 34),
-              aes(x = gono_length, 
-                  y = gamma),
-              col = "skyblue",
-              linewidth = 1) +
-    geom_line(data = subset(pred_g, temp == 34),
-              aes(x = gono_length, 
-                  y = exp),
-              col = "black",
-              linewidth = 1) +
-    facet_wrap(~temp))
-
-
-EHT <- EHT %>% mutate(dead = bf_dead + gravid_dead + unf_dead,
-               live = bf_live + gravid_live + unf_live)    
 
 
 

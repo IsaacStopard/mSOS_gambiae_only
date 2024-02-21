@@ -1,10 +1,24 @@
-# EIP PDF function
+# Functions required to calculate the individual vectorial capacity
+# Author: Isaac J Stopard
+# Version: 1.0.0 
+# Notes: 
+# (1) These functions were run on the MRC Centre cluster, which needed to be saved on this network, meaning some functions are duplicated.
+# (2) These methods were replicated from Iacovidou et al. https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1009540.
+# (3) _fixed refers to the equivalent model with the degree day model EIP.
+
+############################
+##### EIP PDF function #####
+############################
+
 EIP_PDF <- function(t, a, b, mu, k){
   return(-(((1/b)^-a) * exp(-b * t) * (t^(-1+a)) * mu * ((k / (k + mu))^(1 + k)) * (((k + mu * zipfR::Rgamma(a, b*t)) / (k + mu)) ^ (-1 - k))
            / ((-1 + (k / (k + mu))^k) * gamma(a))))
 }
 
-# mosquito mortality functions
+########################################
+##### mosquito mortality functions #####
+########################################
+
 gomp_par_g1 <- function(temp, b0, b2, b3){
   return(b0 + b2*temp + b3*temp^2)
 }
@@ -26,10 +40,12 @@ surv_gomp_i <- function(a0, a, g1, g2){
   return(exp(-int))
 }
 
-# Step 1
+##################
+##### Step 1 #####
+##################
 # probability of surviving the EIP given infection at age a0 and the Gompertz survival function
+
 # integrand
-# check if this is vectorised
 prop_surv_gomp_int <- function(a, # time since age at infection
                                a0, # age at infection
                                g1, g2, # gompertz function parameters
@@ -78,7 +94,9 @@ prop_surv_gomp_fixed <- function(a, # degree-day model EIP
 
 v_prop_surv_gomp_fixed <- Vectorize(prop_surv_gomp_fixed)
 
-# Step 2
+##################
+##### Step 2 #####
+##################
 # probability a mosquito biting time
 # probability of j bites given mosquito exits the EIP at age a1
 # integrand
@@ -189,33 +207,9 @@ E_j_bites_EIP_a1 <- function(alpha, # Poisson distribution rate
 
 v_E_j_bites_EIP_a1 <- Vectorize(E_j_bites_EIP_a1)
 
-# sum approximation - won't use this for now
-# E_j_bites_EIP_a1 <- function(alpha, # Poisson distribution rate
-#                       a1, # age the mosquito exits the EIP
-#                       g1,
-#                       g2){
-#   # find the maximum number of bites
-#   j <- 0
-#   p <- p_j_bites_EIP_a1(j = j, alpha = alpha, a1 = a1, g1 = g1, g2 = g2)
-# 
-#   j_vec <- j
-#   p_vec <- p
-# 
-#   while (TRUE) {
-#     j <- j + 1
-# 
-#     p <- p_j_bites_EIP_a1(j = j, alpha = alpha, a1 = a1, g1 = g1, g2 = g2)
-# 
-#     j_vec <- c(j_vec, j)
-#     p_vec <- c(p_vec, p)
-# 
-#     if (sum(p_vec) >= 1 & p > 1E-10) break
-#   }
-# 
-#   return(list("E" = sum(j_vec * p_vec), "df" = data.frame(j = j_vec, p = p_vec)))
-# }
-
-# Step 3
+##################
+##### Step 3 #####
+##################
 # expected number of bites given infectious blood meal at age a0
 p_j_bites_meal_a0_int <- function(a1, # age the mosquito exits the EIP
                                   j,
@@ -406,100 +400,9 @@ E_j_bites_a0_fixed <- function(a0, # age the mosquito exits the EIP
 
 v_E_j_bites_a0_fixed <- Vectorize(E_j_bites_a0_fixed)
 
-# step 4
-E_j_bites_int <- function(a0, 
-                          alpha, 
-                          g1, g2,
-                          shape, rate, mu_PL, k){
-  return(E_j_bites_a0(a0 = a0, 
-                      alpha = alpha, 
-                      g1 = g1, 
-                      g2 = g2,
-                      shape = shape, 
-                      rate = rate, 
-                      mu_PL = mu_PL, 
-                      k = k) * 
-           alpha * exp(- alpha * a0))
-}
-
-v.E_j_bites_int <- Vectorize(E_j_bites_int)
-
-E_j_bites <- function(alpha, # Poisson distribution rate
-                      g1,
-                      g2,
-                      shape,
-                      rate,
-                      mu_PL,
-                      k){
-  
-  out <- calculus::integral(v.E_j_bites_int,
-                            bounds = list("a0" = c(0, Inf)),
-                            params = list("alpha" = alpha, # Poisson distribution rate
-                                          "g1" = g1, "g2" = g2,
-                                          "shape" = shape, "rate" = rate, "mu_PL" = mu_PL, "k" = k),
-                            method = "suave",
-                            absTol = 1E-5,
-                            coordinates = "cartesian"
-  )$value
-  
-  return(out)
-}
-
-v.E_j_bites <- Vectorize(E_j_bites)
-
-# E_j_bites_a0_check <- function(a0, # age the mosquito exits the EIP
-#                          alpha, # Poisson distribution rate
-#                          g1,
-#                          g2,
-#                          shape,
-#                          rate,
-#                          mu_PL,
-#                          k){
-#   # find the maximum number of bites
-#   j <- 0
-#   p <- p_j_bites_meal_a0(j = j, 
-#                          alpha = alpha, 
-#                          a0 = a0, 
-#                          g1 = g1, 
-#                          g2 = g2, 
-#                          shape = shape, 
-#                          rate = rate, 
-#                          mu_PL = mu_PL, 
-#                          k = k)
-#   
-#   j_vec <- j
-#   p_vec <- p
-#   
-#   while (TRUE) {
-#     
-#     j <- j + 1
-#     p <- p_j_bites_meal_a0(j = j, 
-#                            alpha = alpha, 
-#                            a0 = a0, 
-#                            g1 = g1, 
-#                            g2 = g2, 
-#                            shape = shape, 
-#                            rate = rate, 
-#                            mu_PL = mu_PL, 
-#                            k = k)
-#     
-#     j_vec <- c(j_vec, j)
-#     p_vec <- c(p_vec, p)
-#     
-#     if (j > 100) break #sum(p_vec) >= 1 & p < 10E-5
-#   }
-#   
-#   return(list("E" = sum(j_vec * p_vec), "p_vec" = p_vec))
-# }
-# 
-# E_j_bites_a0_check(a0 = 10, 
-#              alpha = 0.5, 
-#              g1 = 0.01, 
-#              g2 = 0.1,
-#              shape = 40, 
-#              rate = 4, 
-#              mu_PL = 10, 
-#              k = 0.5)
+##################################
+##### other functions needed #####
+##################################
 
 quadratic_function <- function(t, a, b, c){
   out <- (t^2 * a) + (t * b) + c

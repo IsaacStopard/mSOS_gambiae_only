@@ -1,3 +1,7 @@
+# R script to process the original data
+# Author: Isaac J Stopard
+# Version: 1.0.0 
+
 rm(list = ls())
 library(tidyverse)
 source(file = "utils/data_wrangling_functions.R")

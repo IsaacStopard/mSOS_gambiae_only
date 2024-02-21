@@ -1,12 +1,20 @@
+# R script to fit the sporogony model
+# Author: Isaac J Stopard
+# Version: 1.0.0
+
 rm(list = ls())
 library(tidyverse); library(rstan); library(shinystan); library(cowplot); library(zipfR); library(truncnorm);library(ggpmisc);
 options(mc.cores = parallel::detectCores())
 rstan_options(auto_write = TRUE)
 
-source(file = "read_data_function.R")
+source(file = "utils/read_data.R")
 source(file = "utils/functions_temp_only.R")
 
-# pooled model
+########################
+##### pooled model #####
+########################
+
+#data
 data_in_temp <- list(
   n_S = as.integer(nrow(s_data_in_temp)), 
   S_sample = as.integer(s_data_in_temp$sample),
@@ -55,12 +63,13 @@ finit_temp <- function(){
   )
 }
 
+# running the MCMC
 fit_temp <- stan(file = "model/mSOS_multi_8.stan", data = data_in_temp, iter=iterations, chains = chains, seed=12345,
                  warmup = warmup, init = finit_temp, control = list(max_treedepth = 12.5, adapt_delta = 0.99))
 
 saveRDS(fit_temp, "fits/fit_mSOS_temp_only_f2_f3.rds")
-fit_temp <- readRDS("fits/fit_mSOS_temp_only_f2_f3.rds")
 
+# extracting the parameter values
 p_params <- rstan::extract(fit_temp, c("shape_O", "rate_O", "k",
                                        "a_shape_S", "b_shape_S", "c_shape_S",
                                        "m_rate_S", "c_rate_S",
@@ -72,7 +81,10 @@ bind_rows(lapply(seq(1, length(p_params)), function(i){
   p <- p_params[[i]]
   c(names(p_params[i]), round(c(median(p), quantile(p, probs = c(0.025, 0.975))), digits = 2))
 }))
-# independent model
+
+#############################
+##### independent model #####
+#############################
 
 data_in_all_temp <- list(
   n_S = as.integer(nrow(s_data_in_temp)), 
@@ -114,9 +126,12 @@ fit_all_temp <- stan(file = "model/mSOS_multi.stan", data = data_in_all_temp, it
                 warmup = warmup, init = finit_all, control = list(max_treedepth = 12.5, adapt_delta = 0.99))
 
 saveRDS(fit_all_temp, file = "fits/fit_mSOS_multi_temp.rds")
-fit_all_temp <- readRDS(file = "fits/fit_mSOS_multi_temp.rds")
 
-# model checking
+##########################
+##### model checking #####
+##########################
+
+# parameters fit in the pooled model
 pars <- c("shape_O", "rate_O", "a_shape_S", "b_shape_S", "c_shape_S",
           "m_rate_S", "c_rate_S",
           "a_delta", "b_delta", "c_delta", 
@@ -124,6 +139,7 @@ pars <- c("shape_O", "rate_O", "a_shape_S", "b_shape_S", "c_shape_S",
           "a_mu", "b_mu", "c_mu",
           "k")
 
+# model diagnostic plots
 png("results_temp/pairs_plot.png", height = 2500, width = 2500)
 pairs(fit_temp, pars = pars)
 dev.off()
