@@ -1,4 +1,4 @@
-# **Data and code for: Temperature and transmission: novel estimates of the effects of temperature on the malaria parasite, Plasmodium falciparum**
+# **Data and code for: Estimating of the effects of temperature on transmission of the human malaria parasite, Plasmodium falciparum**
 ## **Authors: Eunho Suh, Isaac J. Stopard, Ben Lambert, Jessica L. Waite, Nina L. Dennington, Thomas Churcher, and Matthew B. Thomas**
 
 This GitHub repository provides all code necessary to run the analyses for this paper. We ran the model using R version 4.2.1 and Stan version 2.21.0.
