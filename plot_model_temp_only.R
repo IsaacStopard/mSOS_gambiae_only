@@ -1,3 +1,7 @@
+# R script to fit plot the model fits
+# Author: Isaac J Stopard
+# Version: 1.0.0 
+
 rm(list = ls())
 
 # packages
@@ -8,8 +12,7 @@ options(mc.cores = parallel::detectCores())
 rstan_options(auto_write = TRUE)
 
 # functions and data that are used in multiple files
-source(file = "read_data_function.R")
-source(file = "utils/plotting_functions_temp_only.R")
+source(file = "utils/read_data.R") # functions_temp_only.R is sourced by the read_data.R script already
 
 # changing the default ggplot theme
 theme_set(theme_bw() + 
@@ -20,19 +23,6 @@ theme_set(theme_bw() +
 # reading in the EIP model fits
 fit_temp <- readRDS("fits/fit_mSOS_temp_only_f2_f3.rds")
 fit_all_temp <- readRDS(file = "fits/fit_mSOS_multi_temp.rds")
-
-# model checking
-pars <- c("shape_O", "rate_O", "a_shape_S", "b_shape_S", "c_shape_S",
-          "m_rate_S", "c_rate_S",
-          "a_delta", "b_delta", "c_delta", 
-          "a_delta_S", "b_delta_S", "c_delta_S", 
-          "a_mu", "b_mu", "c_mu",
-          "k")
-
-# model diagnostic plots
-png(file = "traceplot_pooled_model.png", height = 500, width = 1000)
-traceplot(fit_temp, pars = pars)
-dev.off()
 
 ##############################
 ### visualising model fits ###
@@ -285,8 +275,6 @@ p_EIP_50_df <- data.frame(temp = temps,
 
 f <- approxfun(x = subset(p_EIP_50_df, p_EIP50 > 0.02 & p_EIP50 < 0.98)$p_EIP50, 
                y = subset(p_EIP_50_df, p_EIP50 > 0.02 & p_EIP50 < 0.98)$temp, method = "linear")
-
-f(0.95)
 
 p_EIP_50_plot <- ggplot(data = p_EIP_50_df, aes(x = temp, y = p_EIP50)) + 
   scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.2)) +

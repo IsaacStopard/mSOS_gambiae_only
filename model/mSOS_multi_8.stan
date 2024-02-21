@@ -1,16 +1,7 @@
 // mSOS: a multiscale stochastic model of sporogony - pooled model
 // Author: Isaac J Stopard
-// Version: 0.01 
+// Version: 1.0.0 
 // Last updated: 03/12/2020
-// Notes: single parameters for oocyst load, parasite developments rate and the transmission probability
-//        no mosquito survival data is included
-//        fits to oocyst intensity and sporozoite prevalence data
-//        single shape_O and rate_O for all temperature and g combinations
-//        relationship between shape_S / rate_S and temperature / g
-//        relationship between delta and temperature / g
-//        relationship between k and g
-//        relationship between mu and temperature / g
-
 
 functions{
   // incomplete regularised gamma function
