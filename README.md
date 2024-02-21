@@ -13,23 +13,23 @@ This GitHub repository provides all code necessary to run the analyses for this 
 
 :one: run_model_multi_temp_only.R - provides R code to run the Stan models.
 
-:two: vectorial_capacity_cluster.R - runs the vectorial capacity calculations. Will only work on the MRC Global Infectious Disease Analysis cluster.
+:two: biting_rate.R - fits the Brière function to the gonotrophic cycle length data and plots the results.
 
-:three: biting_rate.R - fits the Brière function to the gonotrophic cycle length data and plots the results.
+:three: vectorial_capacity.R - generates the parameter values to use on the cluster and plots the results.
+
+:four: vectorial_capacity_cluster.R - runs the vectorial capacity calculations. Will only work on the MRC Global Infectious Disease Analysis cluster. Uses the VC_functions.R file.
 
 **Helper functions**
 
 :one: plot_model_temp_only.R - plot the model fits and run some analyses.
 
-:two: functions_temp_only.R - consistent functions to load in and wrangle the data.
+:two: functions_temp_only.R - consistent functions to load in and wrangle the data for fitting, and model fits to help plotting.
 
-:three: plotting_functions_temp_only.R - functions to help plotting.
+:three: wrangle_Eunho_new_data.R - wrangle the raw data into a format that is usable by R.
 
-:four: wrangle_Eunho_new_data.R - wrangle the data into a format for R.
+:four: read_data.R - reads data in the correct format for model fitting and plotting.
 
-:five: read_data.R - reads data in the correct format for model fitting and plotting.
-
-:six: VC_functions.R - functions required to calculate the expected number of infectious bites per infected mosquito.
+:five: VC_functions.R - functions required to calculate the expected number of infectious bites per infected mosquito.
 
 Notes
 
